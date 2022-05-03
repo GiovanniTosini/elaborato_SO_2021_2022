@@ -9,6 +9,8 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <dirent.h>
+#include <string.h>
+#include <sys/stat.h>
 
 #include "defines.h"
 #include "err_exit.h"
@@ -27,27 +29,29 @@ void sigHandler(int sig) {
         printf("Client_0 waiting...\n");
     }
 }
-
+/*
 size_t append2Path(char *directory){
-    size_t lastPathEnd=strlen(currdir);
+    size_t lastPathEnd = strlen(currdir);
     strcat(strcat(&currdir[lastPathEnd],"/"),directory);
     return lastPathEnd;
 }
+*/
 
-int checkFileName(char *filename,char *string){
-    //controllo nome file
-
-        //1: ok
-        //0: no
-    }
-
-}
 
 int main(int argc, char * argv[]) {
 
+    struct dirent *dentry;
+    struct stat sb; //struttura di supporto per verificare la dimensione del singolo file
+
+    //check degli argomenti passati
+    if(argc != 2){
+        printf("Only the directory path needed");
+        return 1;
+    }
+
+
     //creazione, inizializzazione e gestione dei segnali
     sigset_t signalSet;
-    char *user;
     
     //rimozione di tutti i segnali
 
@@ -84,30 +88,33 @@ int main(int argc, char * argv[]) {
             ErrExit("Failed to switch directory");
         }
 
-        user=getenv("USER");
-        if(getcwd(currdir,sizeof(currdir))==NULL){
+        //otteniamo la current working directory
+        if(getcwd(currdir,sizeof(currdir)) == NULL){
             ErrExit("getcwd failed!");
         }
         
-        printf("Ciao %s, ora inizio l’invio dei file contenuti in %s",user,currdir);
-        DIR *dirp=opendir(currdir);
-        
-        struct dirent *dentry;
+        printf("Ciao %s, ora inizio l’invio dei file contenuti in %s", getenv("USER"), currdir);
+        DIR *dirp = opendir(currdir);
 
-        while((dentry=readdir(dirp))!=NULL){
-            if(strcmp(dentry->d_name,".")==0||strcmp(dentry->d_name,".."==0)){
+        /* skippa le cartelle '.' e '..'
+         * cerca nelle altre cartelle i file
+         * che iniziano per 'sendme_'
+         * */
+        while((dentry = readdir(dirp)) != NULL){
+
+            if(strcmp(dentry->d_name, ".") == 0 || strcmp(dentry->d_name, "..") == 0){
                 continue;
             }
-            if(dentry->d_type==DT_REG){
-                size_t lastPath=append2Path(dentry->d_name); 
-
-                int match=checkFileName(dentry->d_name, dentry->d_name + "/sendme_");
-
-                if(match==1) //true
-
+            //se è un file ed inizia con 'sendme_' otteniamo il suo path e lo carichiamo in memoria
+            if((dentry->d_type == DT_REG) && (strncmp(dentry->d_name, "sendme_", strlen("sendme_")) == 0)){
+                char result[250];
+                *result = strcat(currdir, dentry->d_name); //FORSE BISOGNA METTERE '/' DOPO IL PATH DELLA CARTELLA
+                stat(result, &sb);
+                if(sb.st_size <= 4096){
+                    //il file è minore uguale a 4KB, bisogna SISTEMARE
+                }
             }
-
-
+            }
 
         }
 
