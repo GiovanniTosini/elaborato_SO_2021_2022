@@ -21,6 +21,7 @@
 char currdir[BUFFER_SZ];
 char *files[100]; //nomi file
 int n_files=0;
+char *fifo1name="/tmp/myfifo1";
 
 
 void sigHandler(int sig) {
@@ -101,7 +102,29 @@ int main(int argc, char * argv[]) {
         printf("Ciao %s, ora inizio l’invio dei file contenuti in %s", getenv("USER"), currdir);
         
         search(files, currdir, n_files);
-		
+        //invio n° file
+        int fd1=open(fifo1name,O_WRONLY);
+
+        write(fd1,n_files,sizeof(n_files));
+        
+        //attende di ricevere messaggio da shared memory
+
+        //generazione figli
+        pid_t pid;
+        for(int i=0;i<n_files;i++){
+            pid=fork();
+            if(pid==-1)
+                ErrExit("fork error");
+            else if(pid == 0){
+                //figlio fa cose
+                
+            }
+        }
+
+        if(pid==-1)
+            ErrExit("fork error!");
+        if(pid==0)
+            //figlio che fa cose...
 	
         }
 		
