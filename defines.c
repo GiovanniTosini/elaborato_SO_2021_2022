@@ -31,12 +31,12 @@ void search(char *files[], char currdir[], int n_files){
             stat(pathname, &sb); //ottengo info file
             if(sb.st_size <= 4096){ //TODO: oppure 4000
                 //il file è minore uguale a 4KB, bisogna SISTEMARE
-                files[n_files]=pathname;
+                files[n_files] = pathname;
                 n_files++; 
             }
-        }else if(dentry->d_type== DT_DIR){
+        }else if(dentry->d_type == DT_DIR){
         	
-        	char *dir=strcat(currdir, dentry->d_name);
+        	char *dir = strcat(currdir, dentry->d_name);
         	
         	search(files, dir, n_files);
     	}
