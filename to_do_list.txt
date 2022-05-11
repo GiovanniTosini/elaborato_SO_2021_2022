@@ -1,4 +1,1 @@
-- gestire numero indefinito di sottocartelle -> creare una funzione?
-- creare funzione per controllare i file? copia da 108
-- conteggio dei file validi
-- fare array dinamico con i path dei file (o double linked list?)
+- per dividere in 4 parti, usare memcpy, guarda esempio di marco

@@ -4,4 +4,9 @@
 
 #pragma once
 
+struct mymsg{
+    long mtype;
+    char *portion;
+} msg;
 void search(char *files[], char currdir[], int n_files);
+int divideBy4(int counter);

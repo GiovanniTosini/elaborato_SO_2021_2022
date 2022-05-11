@@ -20,7 +20,7 @@
 #define N_FILES 100
 
 char currdir[BUFFER_SZ];
-char *files[N_FILES]; //nomi file
+char *files[N_FILES]; //pathname file
 int n_files = 0;
 char *fifo1name = "/tmp/myfifo1";
 char *fifoShmId = "/tmp/myFifoForId";
@@ -120,7 +120,27 @@ int main(int argc, char * argv[]) {
             if(pid == -1)
                 ErrExit("fork error");
             else if(pid == 0){
-                //figlio fa cose
+                struct stat sb;
+                char *buff;
+                char *sendByFIFO1;
+                char *sendByFIFO2;
+                char *sendByMsgQ; //variabile in cui salvare per msgQ
+                char *sendByShM; //variabile in cui salvare per shm
+                int fd, counter = 0, incremento = 0, totalByte = 0, porzione = 0, bloccoByte = 0;
+
+                fd = open(files[i], O_RDONLY, S_IRUSR);
+                stat(files[i], &sb);
+                read(fd, buff, sb.st_size);
+                incremento = divideBy4((sb.st_size)/8); //incremento necessario per dividere per 4
+
+
+
+                porzione = (counter + incremento) / 4; //un quarto dei caratteri
+                bloccoByte = porzione * 8; //singolo blocco di byte
+                totalByte = (incremento + counter) * 8; //byte totali da leggere
+
+
+
                 
             }
         }

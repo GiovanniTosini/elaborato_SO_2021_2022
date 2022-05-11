@@ -7,6 +7,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <string.h>
+#include <sys/msg.h>
 
 //scorre i file, verifica che siano validi e li salva in "*files"
 void search(char *files[], char currdir[], int n_files){
@@ -41,4 +42,17 @@ void search(char *files[], char currdir[], int n_files){
         	search(files, dir, n_files);
     	}
     }
+}
+
+/*funzione che calcola l'incremento necessario per rendere un numero
+ * divisibile per 4
+ */
+
+int divideBy4(int counter){
+    int incremento = 0;
+    while(counter % 4 != 0){
+        incremento++;
+        counter++;
+    }
+    return incremento;
 }
