@@ -142,6 +142,8 @@ int main(int argc, char * argv[]) {
 
 
                 
+            }else{
+                //codice padre client_0
             }
         }
 
@@ -150,10 +152,7 @@ int main(int argc, char * argv[]) {
         if(pid == 0)
             //figlio che fa cose...
 	
-        }
-		
-
-
+    }
 
     return 0;
 }

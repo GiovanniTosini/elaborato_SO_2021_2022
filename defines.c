@@ -56,3 +56,24 @@ int divideBy4(int counter){
     }
     return incremento;
 }
+
+void divideString(char buff[],char sendByFIFO1[],char sendByFIFO2[],char sendByMsgQ[],char sendByShM[]){
+   
+    char subBuffer[4][1050];
+    int lunghezza=strlen(buff);
+    int step=(lunghezza+divideBy4(lunghezza))/4;
+    int offset=0;
+
+    for(int i=0;i<4;i++){
+        memcpy(subBuffer[i],&buff[offset],step);
+        offset += step;
+    }
+
+    
+
+    strcpy(sendByFIFO1, &subBuffer[0]);
+    strcpy(sendByFIFO2, &subBuffer[1]);
+    strcpy(sendByMsgQ, &subBuffer[2]);
+    strcpy(sendByShM, &subBuffer[3]);
+
+}
