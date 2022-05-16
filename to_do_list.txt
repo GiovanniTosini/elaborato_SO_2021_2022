@@ -1,1 +1,7 @@
-- per dividere in 4 parti, usare memcpy, guarda esempio di marco
+- Invio da parte del client dei vari messaggi che contengono il pezzo del file, il pid e l'id del messaggio per la msg queue. E utilizziamo tale messaggio per per tutte le varie parti di file
+-Gestione dei messaggi ricevuti dal server: Usiamo una matrice di strutture dati in cui in ogni struttura salviamo i 4 pezzi di file estrapolati dai messaggi
+oppure
+Una struttura che contiene i 4 messaggi stessi
+oppure
+un array di stringa a cui aggiungiamo ad ognuno il pezzo di file, ma non è possibile se i frammenti arrivano in disordine
+
