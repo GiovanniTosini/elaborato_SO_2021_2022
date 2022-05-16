@@ -46,7 +46,7 @@ size_t append2Path(char *directory){
 
 int main(int argc, char * argv[]) {
 
-    //check degli argomenti passati
+    //controllo gli argomenti passati
     if(argc != 2){
         printf("Only the directory path needed");
         return 1;
@@ -63,6 +63,7 @@ int main(int argc, char * argv[]) {
         ErrExit("Something wrong I can smell it");
     }*/
 
+    //riempio la signalSet con tutti i segnali
     if(sigfillset(&signalSet) == -1){
         ErrExit("Failed to fill the signals");
     }
@@ -74,11 +75,11 @@ int main(int argc, char * argv[]) {
         ErrExit("Failed to set the signal mask");
     }
 
-    //settaggio del sigHandler
+    //settaggio dei segnali al sigHandler
     if(signal(SIGUSR1 | SIGINT, sigHandler) == SIG_ERR){
         ErrExit("Signal handler set failed");
     }
-    //messo in attesa dei segnali desiderati
+    //in attesa dei segnali desiderati
     while(1){
         pause();
         //settaggio maschera
