@@ -13,10 +13,12 @@
 #include <fcntl.h>
 #include <sys/shm.h>
 #include <sys/sem.h>
+#include <errno.h>
 
 #include "defines.h"
 #include "err_exit.h"
 #include "semaphore.h"
+#include "shared_memory.h"
 
 #define BUFFER_SZ 150
 #define N_FILES 100
@@ -25,8 +27,8 @@ char currdir[BUFFER_SZ];
 char *files[N_FILES]; //pathname file
 int n_files = 0;
 char *fifo1name = "/tmp/myfifo1";
-char *fifoShmId = "/tmp/myFifoForId";
-int attesa=0;
+char *fifo2name ="/tmp/myfifo2";
+char *fifoDummy = "/tmp/myFifoDummy";
 
 void sigHandler(int sig) {
     if(sig == SIGUSR1){
@@ -109,25 +111,71 @@ int main(int argc, char * argv[]) {
 
         //server crea una fifo ad hoc per inviare l'id del segmento di memoria da cui successivamente
         //il client otterrà l'ok dal server
-        int fdId = open(fifoShmId, O_RDONLY);
+        int fdDummy = open(fifoDummy, O_RDONLY);
         int shmId;
-        read(fdId, shmId, sizeof(shmId));
-        close(fdId); //chiusura della FIFO
+        read(fdDummy, shmId, sizeof(shmId));
+        close(fdDummy); //chiusura della FIFO
 
-        //attende di ricevere messaggio da shared memory
-        char *shmPointer = (char *) shmat(shmId, NULL, 0);
+        //stessa roba con msgQ
+        int fdsh = open(fifoDummy, O_RDONLY);
+        int shmId; //sarebbe la msgQ TODO
+        read(fdDummy, shmId, sizeof(shmId));
+        close(fdDummy); //chiusura della FIFO
+
+        //attende di ricevere messaggio da shared memory TODO tutto
+        char *shmPointer = (char *) shmat(shmId, NULL, 0); //TODO perché abbiamo copiato funzione dal prof
         while(shmPointer != "confirmed");
 
         //creazione del semaforo che verrà usato dai figli
-        int semid=semget(IPC_PRIVATE,1,S_IRUSR|S_IWUSR);
-        if(semid==-1)
+        int semForIPC=semget(IPC_PRIVATE, 1, S_IRUSR | S_IWUSR);
+        if(semForIPC == -1)
             errExit("semget failed");
 
         //inizializzazione del semaforo
         union semun arg;
         arg.val=n_files; //set del valore iniziale
-        if(semctl(semid,0,SETALL,arg)==-1){
+        if(semctl(semForIPC, 0, SETALL, arg) == -1){
             errExit("semctl set failed!");
+        }
+
+        //definizione delle strutture che verranno usate per l'invio
+        struct mymsg sendByFIFO1;
+        struct mymsg sendByFIFO2;
+        struct mymsg *sendByShMemory;
+        struct mymsg sendByMsgQ;
+
+        //attach della shared memory
+        sendByShMemory = (struct mymsg*) get_shared_memory(shmId, 0);
+
+        //lettura ID dei semafori generati dal server
+        int semIdForFIFO1, semIdForFIFO2, semIdForShMemory, semIdForMsgQ;
+        read(fdDummy, semIdForFIFO1, sizeof(semIdForFIFO1));
+        read(fdDummy, semIdForFIFO2, sizeof(semIdForFIFO2));
+        read(fdDummy, semIdForShMemory, sizeof(semIdForShMemory));
+        read(fdDummy, semIdForMsgQ, sizeof(semIdForMsgQ));
+
+        close(fdDummy);
+
+        //settaggio dei singoli semafori
+        union semun semFIFO1;
+        union semun semFIFO2;
+        union semun semShMemory;
+        union semun semMsgQ;
+        semFIFO1.val = 50;
+        semFIFO2.val = 50;
+        semShMemory.val = 50;
+        semMsgQ.val = 50;
+        if(semctl(semIdForFIFO1,0,SETALL, semFIFO1) == -1){
+            errExit("semctl for semFIFO1 set failed!");
+        }
+        if(semctl(semIdForFIFO2,0,SETALL, semFIFO2) == -1){
+            errExit("semctl for semFIFO2 set failed!");
+        }
+        if(semctl(semIdForShMemory,0,SETALL, semShMemory) == -1){
+            errExit("semctl for semShMemory set failed!");
+        }
+        if(semctl(semIdForMsgQ,0,SETALL, semMsgQ) == -1){
+            errExit("semctl for semMsgQ set failed!");
         }
 
         //generazione figli
@@ -137,40 +185,58 @@ int main(int argc, char * argv[]) {
             if(pid == -1)
                 errExit("fork error");
             else if(pid == 0){
-                struct stat sb;
+                struct stat fileStatistics;
+                struct mymsg *dummyShM;
                 char *buff;
-                char *sendByFIFO1;
-                char *sendByFIFO2;
-                char *sendByMsgQ; //variabile in cui salvare per msgQ
-                char *sendByShM; //variabile in cui salvare per shm
-                int fd, counter = 0, incremento = 0, totalByte = 0, porzione = 0, bloccoByte = 0;
+                //salvataggio del pid del figlio
+                sendByFIFO1.mtype = getpid();
+                sendByFIFO2.mtype = getpid();
+                sendByMsgQ.mtype = getpid();
+                dummyShM->mtype = getpid();
+                //salvataggio pathname del file
+                sendByFIFO1.pathname = files[child];
+                sendByFIFO2.pathname = files[child];
+                sendByMsgQ.pathname = files[child];
+                dummyShM->pathname = files[child];
 
-                fd = open(files[child], O_RDONLY, S_IRUSR); //apertura child-esimo file
-                stat(files[child], &sb); //prendo statistiche file
-                read(fd, buff, sb.st_size); //leggo il file
+                int fd = open(files[child], O_RDONLY, S_IRUSR); //apertura child-esimo file
+                stat(files[child], &fileStatistics); //prendo statistiche file
+                read(fd, buff, fileStatistics.st_size); //leggo il file
 
-                divideString(buff,sendByFIFO1,sendByFIFO2,sendByMsgQ,sendByShM); //dividiamo il file e lo salviamo nelle stringhe
-
+                divideString(buff,sendByFIFO1.portion,sendByFIFO2.portion,sendByMsgQ.portion,dummyShM->portion); //dividiamo il file e lo salviamo nelle stringhe
 
                 //blocco il figlio
-                attesa++; //controllo attesa figli
-                semOp(semid, (unsigned short)0, -1); //TODO: Da verificare!
-                semOp(semid, (unsigned short)0, 0); //Rimane fermo fin quando tutti non sono 0.
-                //iniziano inviare
+                semOp(semForIPC, (unsigned short)0, -1); //TODO: Da verificare!
+                semOp(semForIPC, (unsigned short)0, 0); //Rimane fermo fin quando tutti non sono 0.
+                //iniziano inviare //TODO forse non va bene che inviano uno alla volta
+                semOp(semIdForFIFO1, 0, -1);
+                int fdFIFO1 = open(fifo1name, S_IWUSR);
+                if(write(fdFIFO1, sendByFIFO1, sizeof(sendByFIFO1)) == -1){
+                    errExit("Client, failed to write on FIFO1");
+                }
+
+                semOp(semIdForFIFO2, 0, -1);
+                int fdFIFO2 = open(fifo2name, S_IWUSR);
+                if(write(fdFIFO2, sendByFIFO2, sizeof(sendByFIFO2)) == -1){
+                    errExit("Client, failed to write on FIFO2");
+                }
+
+                semOp(semIdForShMemory, 0, -1);
+                sendByShMemory[child] = *dummyShM; //TODO da verificare se funziona esattamente così
+                /* TODO creare variabile inizializzata a 0, man mano che si scrive
+                 * viene incrementata di 1 e per quando deve ripartire da 0 */
+                /* 1 2 3 4 5
+                 * 0 2 3 4 5
+                 * 6 2 3 4 5 */
+
 
                 
-            }else{
+            }
+            else{
                 //codice padre client_0
                 //attesa msg queue
-
             }
         }
-
-        if(pid == -1)
-            errExit("fork error!");
-        if(pid == 0)
-            //figlio che fa cose...
-	
     }
 
     return 0;

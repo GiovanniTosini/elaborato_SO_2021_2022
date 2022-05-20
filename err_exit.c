@@ -4,12 +4,13 @@
 #include "err_exit.h"
 
 #include <stdlib.h>
-#include <stdarg.h>
 #include <stdio.h>
 #include <errno.h>
+#include <string.h>
 
-void errExit(const char *msg)
-{
+void errExit(const char *msg){
     perror(msg);
+    printf("\n");
+    strerror(errno);
     exit(1);
 }
