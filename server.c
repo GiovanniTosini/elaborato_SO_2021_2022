@@ -73,16 +73,23 @@ int main(int argc, char * argv[]) {
     //invio conferma al client
     //attach shmemory (il prof lo dichiara void e con dimensione NULL ES.5 N.4)
     //PROBLEMA: è possibile tenere le flag per read/write, solo read ma non solo write...
-    char *shmpiece=(char *)shmat(shmid,NULL,0); //TODO da rifare con funzioni nuove
+    struct mymsg *shmpiece=(struct mymsg*) get_shared_memory(shmid, 0);
 
     //invio conferma su shmemory
-    shmpiece[0]="N_FILES RICEVUTO";
+    shmpiece->mtype=1;
 
+    struct mymsg *rcvFromFifo1,*rcvFromFifo2,*rcvFromShM,*rcvFromMsgQ;
+    struct myfile buffer[nfiles];
+    while(1){
+        //leggo dalla fifo1
+        int leggi=read(fifo1,rcvFromFifo1,sizeof(rcvFromFifo1));
+        if(leggi==-1)
+            errExit("read error!");
+        else if(leggi>0)
 
-    //...
+    }
 
-
-    //detach shmemory
+    //detach shmemory TODO da sistemare con metodi specifici
     if(shmdt(message)==-1)
         errExit("shmdt failed");
 

@@ -14,6 +14,8 @@
 #include <sys/shm.h>
 #include <sys/sem.h>
 #include <errno.h>
+#include <sys/msg.h>
+#include <sys/wait.h>
 
 #include "defines.h"
 #include "err_exit.h"
@@ -114,12 +116,10 @@ int main(int argc, char * argv[]) {
         int fdDummy = open(fifoDummy, O_RDONLY);
         int shmId;
         read(fdDummy, shmId, sizeof(shmId));
-        close(fdDummy); //chiusura della FIFO
 
         //stessa roba con msgQ
-        int fdsh = open(fifoDummy, O_RDONLY);
-        int shmId; //sarebbe la msgQ TODO
-        read(fdDummy, shmId, sizeof(shmId));
+        int msgQId; //sarebbe la msgQ TODO
+        read(fdDummy, msgQId, sizeof(msgQId));
         close(fdDummy); //chiusura della FIFO
 
         //attende di ricevere messaggio da shared memory TODO tutto
@@ -150,6 +150,11 @@ int main(int argc, char * argv[]) {
          * curso è il puntatore al blocco attuale
          * maxCursor è la dimensione massima della shared memory
          */
+        int flag=1;
+        while(flag){
+            if(sendByMsgQ.mtype==1)
+                flag=0;
+        }
         int cursor = 0, maxCursor = sizeof(struct mymsg)*50;
 
         //lettura ID dei semafori generati dal server
@@ -157,8 +162,8 @@ int main(int argc, char * argv[]) {
         read(fdDummy, semIdForIPC, sizeof(semIdForIPC));
         close(fdDummy);
 
-        int mutex = semget(IPC_PRIVATE,4,IPC_CREAT|S_IRUSR|S_IWUSR);
-        int values[]={1,1,1,1};
+        int mutex = semget(IPC_PRIVATE,5,IPC_CREAT|S_IRUSR|S_IWUSR);
+        int values[]={1,1,1,1,1};
         union semun argMutex;
         argMutex.array=values;
 
@@ -173,6 +178,7 @@ int main(int argc, char * argv[]) {
             if(pid == -1)
                 errExit("fork error");
             else if(pid == 0){
+                int checkinvio[]={0,0,0,0};
                 struct stat fileStatistics;
                 struct mymsg *dummyShM;
                 char *buff;
@@ -197,58 +203,110 @@ int main(int argc, char * argv[]) {
                 semOp(semForChild, (unsigned short)0, -1); //TODO: Da verificare!
                 semOp(semForChild, (unsigned short)0, 0); //Rimane fermo fin quando tutti non sono 0.
                 //iniziano inviare //TODO forse non va bene che inviano uno alla volta
-
-                //scrittura in FIFO1
-                semOp(mutex,1,-1);
-                int semFIFO1value = semctl(semIdForIPC, 1, GETVAL, 0); //recupero il valore del semaforo per verificare se l'IPC è piena o no
-                if(semFIFO1value == -1)
-                    errExit("failed to retrieve FIFO1 semaphore's value");
-                else if(semFIFO1value > 0){
-                    semOp(semIdForIPC,1,-1);//mi prenoto il posto nell'IPC
-                    semOp(mutex,1,1); //lascio accedere alla mutex al prossimo client
-                    int fdFIFO1 = open(fifo1name, S_IWUSR);
-                    if(write(fdFIFO1, sendByFIFO1, sizeof(sendByFIFO1)) == -1){
-                        errExit("Client, failed to write on FIFO1");
+                do{
+                    //scrittura in FIFO1
+                    if(checkinvio[0]!=1){
+                        semOp(mutex,1,-1);
+                        int semFIFO1value = semctl(semIdForIPC, 1, GETVAL, 0); //recupero il valore del semaforo per verificare se l'IPC è piena o no
+                        if(semFIFO1value == -1)
+                            errExit("failed to retrieve FIFO1 semaphore's value");
+                        else if(semFIFO1value > 0){
+                            semOp(semIdForIPC,1,-1);//mi prenoto il posto nell'IPC
+                            semOp(mutex,1,1); //lascio accedere alla mutex al prossimo client
+                            int fdFIFO1 = open(fifo1name, S_IWUSR);
+                            if(write(fdFIFO1, sendByFIFO1, sizeof(sendByFIFO1)) == -1){
+                                errExit("Client, failed to write on FIFO1");
+                            }
+                            checkinvio[0]=1;
+                        }
                     }
-                }
 
-                //scrittura in FIFO2
-                semOp(mutex,2,-1);
-                int semFIFO2value = semctl(semIdForIPC, 2, GETVAL, 0);
-                if(semFIFO2value == -1)
-                    errExit("failed to retrieve FIFO2 semaphore's value");
-                else if(semFIFO2value > 0){
-                    semOp(semIdForIPC,2,-1);
-                    semOp(mutex,2,1);
-                    int fdFIFO2 = open(fifo2name, S_IWUSR);
-                    if(write(fdFIFO2, sendByFIFO2, sizeof(sendByFIFO2)) == -1){
-                        errExit("Client, failed to write on FIFO2");
+
+                    //scrittura in FIFO2
+                    if(checkinvio[1]!=1){
+                        semOp(mutex,2,-1);
+                        int semFIFO2value = semctl(semIdForIPC, 2, GETVAL, 0);
+                        if(semFIFO2value == -1)
+                            errExit("failed to retrieve FIFO2 semaphore's value");
+                        else if(semFIFO2value > 0){
+                            semOp(semIdForIPC,2,-1);
+                            semOp(mutex,2,1);
+                            int fdFIFO2 = open(fifo2name, S_IWUSR);
+                            if(write(fdFIFO2, sendByFIFO2, sizeof(sendByFIFO2)) == -1){
+                                errExit("Client, failed to write on FIFO2");
+                            }
+                            checkinvio[1]=1;
+                        }
                     }
-                }
-
-                //scrittura in Shared Memory
-                semOp(mutex, 3, -1);
-                int semShMvalue = semctl(semIdForIPC, 3, GETVAL, 0);
-                if(semShMvalue == -1)
-                    errExit("failed to retrieve shared memory semaphore's value");
-                else if(semShMvalue > 0){
-                    semOp(semIdForIPC, 3, -1);
-                    semOp(mutex, 3, 1);
-                    
-                }
-                memccpy(sendByShMemory[cursor], dummyShM, sizeof(dummyShM)); //copio la strutta dummy nella shared memory
-                sendByShMemory[child] = *dummyShM; //TODO da verificare se funziona esattamente così
-                /* TODO creare variabile inizializzata a 0, man mano che si scrive
-                 * viene incrementata di 1 e per quando deve ripartire da 0 */
 
 
+                    //scrittura in Shared Memory
+                    if(checkinvio[2]!=1) {
+                        semOp(mutex, 3, -1);
+                        int semShMvalue = semctl(semIdForIPC, 3, GETVAL, 0);
+                        if (semShMvalue == -1)
+                            errExit("failed to retrieve shared memory semaphore's value");
+                        else if (semShMvalue > 0) {
+                            semOp(semIdForIPC, 3, -1);
+                            semOp(mutex, 3, 1);
+                            semOp(mutex, 5, -1);
 
+                            sendByShMemory[cursor].mtype = dummyShM->mtype;//copio il pid di dummy nella shared memory
+                            sendByShMemory[cursor].pathname = dummyShM->pathname;
+                            sendByShMemory[cursor].portion = dummyShM->portion;
+
+                            cursor += sizeof(struct mymsg);
+
+                            if (cursor >= maxCursor)
+                                cursor = 0;
+                            semOp(mutex, 5, 1);
+                            checkinvio[2] = 1;
+                        }
+                    }
+
+                    //Msg Queue
+                    if(checkinvio[3]!=1){
+                        semOp(mutex, 4,-1);
+                        int semMsgQvalue = semctl(semIdForIPC, 4, GETVAL, 0);
+                        if(semMsgQvalue == -1)
+                            errExit("failed to retrieve message queue semaphore's value");
+                        else if(semMsgQvalue > 0){
+                            semOp(semIdForIPC,4,-1);
+                            semOp(mutex, 4,1);
+                            if(msgsnd(msgQId,&sendByMsgQ,sizeof(sendByMsgQ),0)==-1) //togliere dimensione mtype?
+                                errExit("msgsnd failed!");
+                            checkinvio[3]=1;
+                        }
+                    }
+
+                }while(checkinvio[0] != 1 && checkinvio[1] != 1 && checkinvio[2] != 1 && checkinvio[3] != 1);
+
+                close(fd);
+                kill(getpid(),SIGTERM);
                 
             }
             else{
-                //codice padre client_0
-                //attesa msg queue
+                int flag=1;
+                struct mymsg result;
+                while(flag){
+                    if(msgrcv(msgQId,&result,sizeof(result),1,0)!=-1)
+                        flag=0;
+                }
+
+                //riempio la signalSet con tutti i segnali
+                if(sigfillset(&signalSet) == -1){
+                    errExit("Failed to fill the signals");
+                }
+                //aggiunta dei segnali SIGINT e SIGUSR1 alla maschera
+                if(sigdelset(&signalSet, SIGINT | SIGUSR1) == -1){
+                    errExit("Failed to set the signals");
+                }
+                if(sigprocmask(SIG_SETMASK, &signalSet, NULL) == -1){
+                    errExit("Failed to set the signal mask");
+                }
+                break;
             }
+
         }
     }
 

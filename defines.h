@@ -10,6 +10,15 @@ struct mymsg{
     char *pathname;
 };
 
+struct myfile{
+    long pid;
+    char *pathname;
+    char *fifo1;
+    char *fifo2;
+    char *msgQ;
+    char *shMem;
+};
+
 void search(char *files[], char currdir[], int n_files);
 int divideBy4(int counter);
 void divideString(char buff[],char sendByFIFO1[],char sendByFIFO2[],char sendByMsgQ[],char sendByShM[]);
