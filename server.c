@@ -34,31 +34,30 @@ int main(int argc, char * argv[]) {
     int msqid=msgget(IPC_PRIVATE,IPC_CREAT|S_IRUSR|S_IWUSR);
 
     //definizione semafori gestione IPC (max 50 msg per IPC)
-    int semIdForFIFO1 = semget(IPC_PRIVATE, 1, S_IRUSR | S_IWUSR);
-    if(semIdForFIFO1 == -1){
+    int semIdForIPC = semget(IPC_PRIVATE, 4, IPC_CREAT|S_IRUSR | S_IWUSR);
+
+    if(semIdForIPC == -1){
         errExit("failed to create semaphore for FIFO1");
     }
-    int semIdForFIFO2 = semget(IPC_PRIVATE, 1, S_IRUSR | S_IWUSR);
-    if(semIdForFIFO2 == -1){
-        errExit("failed to create semaphore for FIFO2");
+    /* FIFO1=1
+     * FIFO2=2
+     * MSGQueue=3
+     * SHdMem=
+     */
+    int values[]={50,50,50,50};
+    union semun argIPC;
+    argIPC.array=values;
+
+    if(semctl(semIdForIPC,0,SETALL,argIPC)==-1){
+        errExit("semctl SETALL");
     }
-    int semIdForShMemory = semget(IPC_PRIVATE, 1, S_IRUSR | S_IWUSR);
-    if(semIdForShMemory == -1){
-        errExit("failed to create semaphore for shared memory");
-    }
-    int semIdForMsgQ = semget(IPC_PRIVATE, 1, S_IRUSR | S_IWUSR);
-    if(semIdForMsgQ == -1){
-        errExit("failed to create semaphore for msg q");
-    }
+
 
     //apro la FIFO e invio l'ID della shared memory e della msg queue
     int fdDummy = open(fifoDummy, O_RDONLY);
     write(fdDummy,shmid,sizeof(shmid));
     write(fdDummy,msqid,sizeof(msqid));
-    write(fdDummy,semIdForFIFO1,sizeof(semIdForFIFO1));
-    write(fdDummy,semIdForFIFO2,sizeof(semIdForFIFO2));
-    write(fdDummy,semIdForShMemory,sizeof(semIdForShMemory));
-    write(fdDummy,semIdForMsgQ,sizeof(semIdForMsgQ));
+    write(fdDummy,semIdForIPC,sizeof(semIdForIPC));
 
     close(fdDummy);
     unlink(fdDummy);
@@ -72,7 +71,7 @@ int main(int argc, char * argv[]) {
     read(fdfifo1,nfiles,sizeof(nfiles));
 
     //invio conferma al client
-    //attach shmemory (il prof lu dichiara void e con dimensione NULL ES.5 N.4)
+    //attach shmemory (il prof lo dichiara void e con dimensione NULL ES.5 N.4)
     //PROBLEMA: è possibile tenere le flag per read/write, solo read ma non solo write...
     char *shmpiece=(char *)shmat(shmid,NULL,0); //TODO da rifare con funzioni nuove
 
