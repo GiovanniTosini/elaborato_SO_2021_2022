@@ -132,9 +132,9 @@ int main(int argc, char * argv[]) {
             errExit("semget failed");
 
         //inizializzazione del semaforo
-        union semun arg;
-        arg.val=n_files; //set del valore iniziale
-        if(semctl(semForChild, 0, SETALL, arg) == -1){
+        union semun argSemForChild;
+        argSemForChild.val=n_files; //set del valore iniziale
+        if(semctl(semForChild, 0, SETALL, argSemForChild) == -1){
             errExit("semctl set failed!");
         }
 
@@ -146,23 +146,24 @@ int main(int argc, char * argv[]) {
 
         //attach della shared memory
         sendByShMemory = (struct mymsg*) get_shared_memory(shmId, 0);
+        /* variabili per scorrere lungo la shared memory
+         * curso è il puntatore al blocco attuale
+         * maxCursor è la dimensione massima della shared memory
+         */
+        int cursor = 0, maxCursor = sizeof(struct mymsg)*50;
 
         //lettura ID dei semafori generati dal server
         int semIdForIPC;
         read(fdDummy, semIdForIPC, sizeof(semIdForIPC));
         close(fdDummy);
 
-        int mutex=semget(IPC_PRIVATE,4,IPC_CREAT|S_IRUSR|S_IWUSR);
-
+        int mutex = semget(IPC_PRIVATE,4,IPC_CREAT|S_IRUSR|S_IWUSR);
         int values[]={1,1,1,1};
+        union semun argMutex;
+        argMutex.array=values;
 
-        union semun argM;
-
-        argM.array=values;
-
-        if(semctl(mutex,0,SETALL,arg)==-1)
+        if(semctl(mutex, 0, SETALL, argSemForChild) == -1)
             errExit("semctl SETALL");
-
 
 
         //generazione figli
@@ -196,31 +197,46 @@ int main(int argc, char * argv[]) {
                 semOp(semForChild, (unsigned short)0, -1); //TODO: Da verificare!
                 semOp(semForChild, (unsigned short)0, 0); //Rimane fermo fin quando tutti non sono 0.
                 //iniziano inviare //TODO forse non va bene che inviano uno alla volta
+
+                //scrittura in FIFO1
                 semOp(mutex,1,-1);
-                int value=semctl(semIdForIPC,1,GETVAL,0);
-                if(value==-1)
-                    errExit("semctl failed");
-
-                if(value>0){
+                int semFIFO1value = semctl(semIdForIPC, 1, GETVAL, 0); //recupero il valore del semaforo per verificare se l'IPC è piena o no
+                if(semFIFO1value == -1)
+                    errExit("failed to retrieve FIFO1 semaphore's value");
+                else if(semFIFO1value > 0){
                     semOp(semIdForIPC,1,-1);//mi prenoto il posto nell'IPC
-                    semOp(mutex,1,1);
+                    semOp(mutex,1,1); //lascio accedere alla mutex al prossimo client
                     int fdFIFO1 = open(fifo1name, S_IWUSR);
-
                     if(write(fdFIFO1, sendByFIFO1, sizeof(sendByFIFO1)) == -1){
                         errExit("Client, failed to write on FIFO1");
                     }
                 }
-                semOp(semIdForIPC,1,1);
 
-
+                //scrittura in FIFO2
                 semOp(mutex,2,-1);
-                semOp(semIdForIPC, 2, -1);
-                int fdFIFO2 = open(fifo2name, S_IWUSR);
-                if(write(fdFIFO2, sendByFIFO2, sizeof(sendByFIFO2)) == -1){
-                    errExit("Client, failed to write on FIFO2");
+                int semFIFO2value = semctl(semIdForIPC, 2, GETVAL, 0);
+                if(semFIFO2value == -1)
+                    errExit("failed to retrieve FIFO2 semaphore's value");
+                else if(semFIFO2value > 0){
+                    semOp(semIdForIPC,2,-1);
+                    semOp(mutex,2,1);
+                    int fdFIFO2 = open(fifo2name, S_IWUSR);
+                    if(write(fdFIFO2, sendByFIFO2, sizeof(sendByFIFO2)) == -1){
+                        errExit("Client, failed to write on FIFO2");
+                    }
                 }
 
-                semOp(semIdForIPC, 3, -1);
+                //scrittura in Shared Memory
+                semOp(mutex, 3, -1);
+                int semShMvalue = semctl(semIdForIPC, 3, GETVAL, 0);
+                if(semShMvalue == -1)
+                    errExit("failed to retrieve shared memory semaphore's value");
+                else if(semShMvalue > 0){
+                    semOp(semIdForIPC, 3, -1);
+                    semOp(mutex, 3, 1);
+                    
+                }
+                memccpy(sendByShMemory[cursor], dummyShM, sizeof(dummyShM)); //copio la strutta dummy nella shared memory
                 sendByShMemory[child] = *dummyShM; //TODO da verificare se funziona esattamente così
                 /* TODO creare variabile inizializzata a 0, man mano che si scrive
                  * viene incrementata di 1 e per quando deve ripartire da 0 */
