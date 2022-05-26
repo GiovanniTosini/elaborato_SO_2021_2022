@@ -80,17 +80,65 @@ int main(int argc, char * argv[]) {
 
     struct mymsg *rcvFromFifo1,*rcvFromFifo2,*rcvFromShM,*rcvFromMsgQ;
     struct myfile buffer[nfiles];
+    int index=0; //indice array buffer
+    //TODO inizializzo l'array
+    for(int i=0;i<nfiles;i++){
+        buffer[i].pid=NULL;
+        buffer[i].pathname=NULL;
+        buffer[i].fifo1=NULL;
+        buffer[i].fifo2=NULL;
+        buffer[i].msgQ=NULL;
+        buffer[i].shMem=NULL;
+
+    }
     while(1){
         //leggo dalla fifo1
         int leggi=read(fifo1,rcvFromFifo1,sizeof(rcvFromFifo1));
+        semOp(semIdForIPC,1,1);
         if(leggi==-1)
             errExit("read error!");
-        else if(leggi>0)
+        else if(leggi>0){ //TODO leggo dalla fifo1
+            for(int i=0;i<=index;i++){
+                if(buffer[i].pid==NULL){
+                    buffer[i].pid=rcvFromFifo1->mtype;
+                    buffer[i].pathname=rcvFromFifo1->pathname;
+                    buffer[i].fifo1=rcvFromFifo1->portion;
+                    index++;
+                }else if(buffer[i].pid==rcvFromFifo1->mtype){
+                    buffer[i].fifo1=rcvFromFifo1->portion;
+                }
+
+            }
+
+        }
+
+        leggi=read(fifo2,rcvFromFifo2,sizeof(rcvFromFifo2));
+        semOp(semIdForIPC,2,1);
+        if(leggi==-1)
+            errExit("read error!");
+        else if(leggi>0){
+            for(int i=0;i<=index;i++){
+                if(buffer[i].pid==NULL){
+                    buffer[i].pid=rcvFromFifo2->mtype;
+                    buffer[i].pathname=rcvFromFifo2->pathname;
+                    buffer[i].fifo2=rcvFromFifo2->portion;
+                    index++;
+                }else if(buffer[i].pid==rcvFromFifo2->mtype){
+                    buffer[i].fifo2=rcvFromFifo2->portion;
+                }
+
+            }
+        }
+        //lettura shared Memory
+        int cursor=0;
+        //cursor += sizeof(struct mymsg);
 
     }
 
+
+
     //detach shmemory TODO da sistemare con metodi specifici
-    if(shmdt(message)==-1)
+    if(shmdt(shmid)==-1)
         errExit("shmdt failed");
 
     //elimino la shared memory
