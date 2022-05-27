@@ -1,1 +1,2 @@
 - sistemare l'invio tramite msgQ, sizeof(struct) - sizeof(long) NECESSARIO
+- meglio se semOp +1 della shared memory venga fatto dal server

@@ -50,7 +50,7 @@ size_t append2Path(char *directory){
     return lastPathEnd;
 }
 */
-
+//TODO manca open FIFO2
 int main(int argc, char * argv[]) {
 
     //controllo gli argomenti passati
@@ -106,8 +106,9 @@ int main(int argc, char * argv[]) {
         printf("Ciao %s, ora inizio l’invio dei file contenuti in %s", getenv("USER"), currdir);
         
         search(files, currdir, n_files);
-        //invio n° file
+        //aperture FIFO + invio n° file
         int fd1 = open(fifo1name,O_WRONLY);
+        int fd2 = open(fifo2name,O_WRONLY);
 
         write(fd1, n_files, sizeof(n_files));
 
@@ -122,9 +123,11 @@ int main(int argc, char * argv[]) {
         read(fdDummy, msgQId, sizeof(msgQId));
         close(fdDummy); //chiusura della FIFO
 
-        //attende di ricevere messaggio da shared memory TODO tutto
-        char *shmPointer = (char *) shmat(shmId, NULL, 0); //TODO perché abbiamo copiato funzione dal prof
-        while(shmPointer != "confirmed");
+        //attende di ricevere messaggio da shared memory
+        struct mymsg *shmPointer = (struct mymsg *) get_shared_memory(shmId, 0);
+        while(shmPointer->mtype != 1); //rimane bloccato fintanto che non riceve conferma
+        printf("<Client_0> ricevuta conferma dal server");
+        free_shared_memory(shmPointer);
 
         //creazione del semaforo che verrà usato dai figli
         int semForChild=semget(IPC_PRIVATE, 1, S_IRUSR | S_IWUSR);
@@ -147,15 +150,14 @@ int main(int argc, char * argv[]) {
         //attach della shared memory
         sendByShMemory = (struct mymsg*) get_shared_memory(shmId, 0);
         /* variabili per scorrere lungo la shared memory
-         * curso è il puntatore al blocco attuale
+         * cursor è il puntatore al blocco attuale
          * maxCursor è la dimensione massima della shared memory
          */
-        int flag=1;
-        while(flag){
-            if(sendByMsgQ.mtype==1)
-                flag=0;
-        }
         int cursor = 0, maxCursor = sizeof(struct mymsg)*50;
+        //riempio la shared memory di mtype = 0 per agevolare lettura da server
+        for(int i = 0; i < sizeof(struct mymsg)*50; i += sizeof(struct mymsg)){
+            sendByShMemory[i].mtype = 0;
+        }
 
         //lettura ID dei semafori generati dal server
         int semIdForIPC;
@@ -204,6 +206,7 @@ int main(int argc, char * argv[]) {
                 semOp(semForChild, (unsigned short)0, 0); //Rimane fermo fin quando tutti non sono 0.
                 //iniziano inviare //TODO forse non va bene che inviano uno alla volta
                 do{
+                    //INIZIO INVIO
                     //scrittura in FIFO1
                     if(checkinvio[0]!=1){
                         semOp(mutex,1,-1);
@@ -218,6 +221,7 @@ int main(int argc, char * argv[]) {
                                 errExit("Client, failed to write on FIFO1");
                             }
                             checkinvio[0]=1;
+                            close(fdFIFO1);
                         }
                     }
 
@@ -236,6 +240,7 @@ int main(int argc, char * argv[]) {
                                 errExit("Client, failed to write on FIFO2");
                             }
                             checkinvio[1]=1;
+                            close(fdFIFO2);
                         }
                     }
 
@@ -261,6 +266,7 @@ int main(int argc, char * argv[]) {
                                 cursor = 0;
                             semOp(mutex, 5, 1);
                             checkinvio[2] = 1;
+                            free_shared_memory(sendByShMemory);
                         }
                     }
 
@@ -273,9 +279,10 @@ int main(int argc, char * argv[]) {
                         else if(semMsgQvalue > 0){
                             semOp(semIdForIPC,4,-1);
                             semOp(mutex, 4,1);
-                            if(msgsnd(msgQId,&sendByMsgQ,sizeof(sendByMsgQ),0)==-1) //togliere dimensione mtype?
+                            int sizeOfMsg = sizeof(struct mymsg) - sizeof(long);
+                            if(msgsnd(msgQId,&sendByMsgQ,sizeOfMsg,0) == -1)
                                 errExit("msgsnd failed!");
-                            checkinvio[3]=1;
+                            checkinvio[3] = 1;
                         }
                     }
 
@@ -286,11 +293,14 @@ int main(int argc, char * argv[]) {
                 
             }
             else{
-                int flag=1;
+                /*Client_0 si mette in attesa di conferma fine lavoro da
+                 * server la conferma sarà un 1 in mtype
+                 */
                 struct mymsg result;
+                int flag = 1, sizeOfResult = sizeof(result) - sizeof(long);
                 while(flag){
-                    if(msgrcv(msgQId,&result,sizeof(result),1,0)!=-1)
-                        flag=0;
+                    if(msgrcv(msgQId, &result, sizeOfResult, 1, 0) != -1)
+                        flag = 0;
                 }
 
                 //riempio la signalSet con tutti i segnali
