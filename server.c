@@ -188,10 +188,54 @@ int main(int argc, char * argv[]) {
         //creazione file di output dopo ogni lettura si controlla se si son ricevute le 4 parti di un file TODO
         for(int i = 0; i < n_files; i++){
             if(buffer[i].fifo1 != NULL && buffer[i].fifo2 != NULL && buffer[i].shMem != NULL && buffer[i].msgQ != NULL){
-                char *newFile = strcat(buffer[i].pathname, "_out");
-                int fdNewFile = open(newFile, O_WRONLY | O_CREAT, S_IWUSR | S_IRUSR);
+                //preparo le lunghezze delle 4 parti per le future write e il cast a str del pid
+                /*int lenOfFIFO1 = strlen(buffer[i].fifo1);
+                int lenOfFIFO2 = strlen(buffer[i].fifo2);
+                int lenOfShM = strlen(buffer[i].shMem);
+                int lenOfMsgQ = strlen(buffer[i].msgQ);*/
+                char pidToStr[8];
+                sprintf(pidToStr, "%ld", buffer[i].pid);
+                //ottengo il pathname completo del file di out (quello con _out) alla fine
+                char *newName = strcat(buffer[i].pathname, "_out");
+                int fdNewFile = open(newName, O_WRONLY | O_APPEND | O_CREAT, S_IWUSR | S_IRUSR);
                 if(fdNewFile == -1)
                     errExit("<Server> error while making of new file");
+                //con O_APPEND ad ogni write verrà tutto messo in fondo, nessuna sovrascrittura
+                ssize_t resultWrite; //lo userò per ogni write e per verificare che sia andata a buon fine
+                //TODO valutare se mettere i controlli dell'avvenuta write o meno
+                char *newNewName = strcat(newName, ":\n");
+                write(fdNewFile, newNewName, strlen(newNewName));
+                //PARTE 1
+                write(fdNewFile, "[Parte 1, del file ", strlen("[Parte 1, del file "));
+                write(fdNewFile, buffer[i].pathname, strlen(buffer[i].pathname));
+                write(fdNewFile, ", spedita dal processo ", strlen(", spedita dal processo "));
+                write(fdNewFile, pidToStr, sizeof(pidToStr));
+                write(fdNewFile, " tramite FIFO1]\n", strlen(" tramite FIFO1]\n"));
+                write(fdNewFile, buffer[i].fifo1, strlen(buffer[i].fifo1));
+                //PARTE 2
+                write(fdNewFile, "\n\n[Parte 2, del file ", strlen("\n\n[Parte 2, del file "));
+                write(fdNewFile, buffer[i].pathname, strlen(buffer[i].pathname));
+                write(fdNewFile, ", spedita dal processo ", strlen(", spedita dal processo "));
+                write(fdNewFile, pidToStr, sizeof(pidToStr));
+                write(fdNewFile, " tramite FIFO2]\n", strlen(" tramite FIFO2]\n"));
+                write(fdNewFile, buffer[i].fifo2, strlen(buffer[i].fifo2));
+                //PARTE 3 //TODO msgQ va per terza magari meglio ordinare visivamente l'invio e la ricezione
+                write(fdNewFile, "\n\n[Parte 3, del file ", strlen("\n\n[Parte 3, del file "));
+                write(fdNewFile, buffer[i].pathname, strlen(buffer[i].pathname));
+                write(fdNewFile, ", spedita dal processo ", strlen(", spedita dal processo "));
+                write(fdNewFile, pidToStr, sizeof(pidToStr));
+                write(fdNewFile, " tramite MsgQueue]\n", strlen(" tramite MsgQueue]\n"));
+                write(fdNewFile, buffer[i].msgQ, strlen(buffer[i].msgQ));
+                //PARTE 4
+                write(fdNewFile, "\n\n[Parte 4, del file ", strlen("\n\n[Parte 4, del file "));
+                write(fdNewFile, buffer[i].pathname, strlen(buffer[i].pathname));
+                write(fdNewFile, ", spedita dal processo ", strlen(", spedita dal processo "));
+                write(fdNewFile, pidToStr, sizeof(pidToStr));
+                write(fdNewFile, " tramite ShdMem]\n", strlen(" tramite ShdMem]\n"));
+                write(fdNewFile, buffer[i].shMem, strlen(buffer[i].shMem));
+
+
+
 
 
             }
