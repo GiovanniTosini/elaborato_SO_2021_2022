@@ -34,13 +34,13 @@ char *fifoDummy = "/tmp/myFifoDummy";
 
 void sigHandler(int sig) {
     if(sig == SIGUSR1){
-        printf("Termination of Client_0 process.\n");
+        printf("Terminazione del processo Client_0.\n");
         if(kill(getpid(), SIGTERM) == -1){
-            errExit("Failed to terminate client_0");
+            errExit("Ops, il Client_0 è sopravvissuto");
         }
     }
     else if(sig == SIGINT) {
-        printf("Client_0 waiting...\n");
+        printf("Client_0 in attesa...\n");
     }
 }
 /*
@@ -55,7 +55,7 @@ int main(int argc, char * argv[]) {
 
     //controllo gli argomenti passati
     if(argc != 2){
-        printf("Only the directory path needed");
+        printf("<Client_0> Devi passarmi il path della directory!\n");
         return 1;
     }
 
@@ -72,35 +72,35 @@ int main(int argc, char * argv[]) {
 
     //riempio la signalSet con tutti i segnali
     if(sigfillset(&signalSet) == -1){
-        errExit("Failed to fill the signals");
+        errExit("<Client_0> Non sono riuscito a riempire il set di segnali\n");
     }
     //aggiunta dei segnali SIGINT e SIGUSR1 alla maschera
     if(sigdelset(&signalSet, SIGINT | SIGUSR1) == -1){
-        errExit("Failed to set the signals");
+        errExit("<Client_0> Non sono riuscito a settare i segnali\n");
     }
     if(sigprocmask(SIG_SETMASK, &signalSet, NULL) == -1){
-        errExit("Failed to set the signal mask");
+        errExit("<Client_0> Non sono riuscito a settare la maschera dei segnali\n");
     }
 
     //settaggio dei segnali al sigHandler
     if(signal(SIGUSR1 | SIGINT, sigHandler) == SIG_ERR){
-        errExit("Signal handler set failed");
+        errExit("<Client_0> Non sono riuscito a settare il signal handler\n");
     }
     //in attesa dei segnali desiderati
     while(1){
         pause();
         //settaggio maschera
         if(sigaddset(&signalSet, SIGINT | SIGUSR1) == -1){
-            errExit("Failed to reset the signals");
+            errExit("<Client_0> Non sono riuscito a resettare la maschera dei segnali\n");
         }
         //impostazione della directory
         if(chdir(argv[1]) == -1){
-            errExit("Failed to switch directory");
+            errExit("<Client_0> Non sono riuscito a cambiare directory\n");
         }
 
         //otteniamo la current working directory
         if(getcwd(currdir,sizeof(currdir)) == NULL){
-            errExit("getcwd failed!");
+            errExit("<Client_0> Non sono riuscito a ottenre la directory attuale\n");
         }
         
         printf("Ciao %s, ora inizio l’invio dei file contenuti in %s", getenv("USER"), currdir);
@@ -132,13 +132,13 @@ int main(int argc, char * argv[]) {
         //creazione del semaforo che verrà usato dai figli
         int semForChild=semget(IPC_PRIVATE, 1, S_IRUSR | S_IWUSR);
         if(semForChild == -1)
-            errExit("semget failed");
+            errExit("<Client_0> Non sono riuscito a creare il set di semafori\n");
 
         //inizializzazione del semaforo
         union semun argSemForChild;
         argSemForChild.val=n_files; //set del valore iniziale
         if(semctl(semForChild, 0, SETALL, argSemForChild) == -1){
-            errExit("semctl set failed!");
+            errExit("<Client_0> Non sono riuscito a settare i semafori per l'attesa collettiva dei figli\n");
         }
 
         //definizione delle strutture che verranno usate per l'invio
@@ -153,9 +153,9 @@ int main(int argc, char * argv[]) {
          * cursor è il puntatore al blocco attuale
          * maxCursor è la dimensione massima della shared memory
          */
-        int cursor = 0, maxCursor = sizeof(struct mymsg)*50;
+        int cursor = 0, maxCursor = 50; //cambiato da sizeof(struct)*50
         //riempio la shared memory di mtype = 0 per agevolare lettura da server
-        for(int i = 0; i < sizeof(struct mymsg)*50; i += sizeof(struct mymsg)){
+        for(int i = 0; i < sizeof(struct mymsg)*50; i++){
             sendByShMemory[i].mtype = 0;
         }
 
@@ -170,7 +170,7 @@ int main(int argc, char * argv[]) {
         argMutex.array=values;
 
         if(semctl(mutex, 0, SETALL, argSemForChild) == -1)
-            errExit("semctl SETALL");
+            errExit("<Client_0> Non sono riuscito a settare il semaforo mutex\n");
 
 
         //generazione figli
@@ -178,7 +178,7 @@ int main(int argc, char * argv[]) {
         for(int child = 0; child < n_files; child++){
             pid=fork();
             if(pid == -1)
-                errExit("fork error");
+                errExit("<Client_0> Non sono riuscito a fare la fork\n");
             else if(pid == 0){
                 int checkinvio[]={0,0,0,0};
                 struct stat fileStatistics;
@@ -204,7 +204,7 @@ int main(int argc, char * argv[]) {
                 //blocco il figlio
                 semOp(semForChild, (unsigned short)0, -1); //TODO: Da verificare!
                 semOp(semForChild, (unsigned short)0, 0); //Rimane fermo fin quando tutti non sono 0.
-                //iniziano inviare //TODO forse non va bene che inviano uno alla volta
+                //iniziano inviare
                 do{
                     //INIZIO INVIO
                     //scrittura in FIFO1
@@ -212,13 +212,13 @@ int main(int argc, char * argv[]) {
                         semOp(mutex,1,-1);
                         int semFIFO1value = semctl(semIdForIPC, 1, GETVAL, 0); //recupero il valore del semaforo per verificare se l'IPC è piena o no
                         if(semFIFO1value == -1)
-                            errExit("failed to retrieve FIFO1 semaphore's value");
+                            errExit("<Client_0> Non sono riuscito a recuperare il valore del semaforo della FIFO1\n");
                         else if(semFIFO1value > 0){
                             semOp(semIdForIPC,1,-1);//mi prenoto il posto nell'IPC
                             semOp(mutex,1,1); //lascio accedere alla mutex al prossimo client
                             int fdFIFO1 = open(fifo1name, S_IWUSR);
                             if(write(fdFIFO1, sendByFIFO1, sizeof(sendByFIFO1)) == -1){
-                                errExit("Client, failed to write on FIFO1");
+                                errExit("<Client_0> Non sono riuscito a scrivere nella FIFO1\n");
                             }
                             checkinvio[0]=1;
                             close(fdFIFO1);
@@ -231,13 +231,13 @@ int main(int argc, char * argv[]) {
                         semOp(mutex,2,-1);
                         int semFIFO2value = semctl(semIdForIPC, 2, GETVAL, 0);
                         if(semFIFO2value == -1)
-                            errExit("failed to retrieve FIFO2 semaphore's value");
+                            errExit("<Client_0> Non sono riuscito a recuperare il valore del semaforo della FIFO2\n");
                         else if(semFIFO2value > 0){
                             semOp(semIdForIPC,2,-1);
                             semOp(mutex,2,1);
                             int fdFIFO2 = open(fifo2name, S_IWUSR);
                             if(write(fdFIFO2, sendByFIFO2, sizeof(sendByFIFO2)) == -1){
-                                errExit("Client, failed to write on FIFO2");
+                                errExit("<Client_0> Non sono riuscito a scrivere nella FIFO2\n");
                             }
                             checkinvio[1]=1;
                             close(fdFIFO2);
@@ -250,19 +250,18 @@ int main(int argc, char * argv[]) {
                         semOp(mutex, 3, -1);
                         int semShMvalue = semctl(semIdForIPC, 3, GETVAL, 0);
                         if (semShMvalue == -1)
-                            errExit("failed to retrieve shared memory semaphore's value");
+                            errExit("<Client_0> Non sono riuscito a recuperare il valore del semaforo della shared memory\n");
                         else if (semShMvalue > 0) {
                             semOp(semIdForIPC, 3, -1);
                             semOp(mutex, 3, 1);
                             semOp(mutex, 5, -1);
 
                             sendByShMemory[cursor].mtype = dummyShM->mtype;//copio il pid di dummy nella shared memory
-                            sendByShMemory[cursor].pathname = dummyShM->pathname;
+                            sendByShMemory[cursor].pathname = dummyShM->pathname; //TODO forse occorre strcpy
                             sendByShMemory[cursor].portion = dummyShM->portion;
 
-                            cursor += sizeof(struct mymsg);
-
-                            if (cursor >= maxCursor)
+                            cursor++;
+                            if (cursor == maxCursor)
                                 cursor = 0;
                             semOp(mutex, 5, 1);
                             checkinvio[2] = 1;
@@ -275,13 +274,13 @@ int main(int argc, char * argv[]) {
                         semOp(mutex, 4,-1);
                         int semMsgQvalue = semctl(semIdForIPC, 4, GETVAL, 0);
                         if(semMsgQvalue == -1)
-                            errExit("failed to retrieve message queue semaphore's value");
+                            errExit("<Client_0> Non sono riuscito a recuperare il valore del semaforo della message queue\n");
                         else if(semMsgQvalue > 0){
                             semOp(semIdForIPC,4,-1);
                             semOp(mutex, 4,1);
                             int sizeOfMsg = sizeof(struct mymsg) - sizeof(long);
                             if(msgsnd(msgQId,&sendByMsgQ,sizeOfMsg,0) == -1)
-                                errExit("msgsnd failed!");
+                                errExit("<Client_0> Non sono riuscito a inviare un messaggio nella message queue\n");
                             checkinvio[3] = 1;
                         }
                     }
@@ -305,14 +304,14 @@ int main(int argc, char * argv[]) {
 
                 //riempio la signalSet con tutti i segnali
                 if(sigfillset(&signalSet) == -1){
-                    errExit("Failed to fill the signals");
+                    errExit("\"<Client_0> Non sono riuscito a riempire il set di segnali\\n\"");
                 }
                 //aggiunta dei segnali SIGINT e SIGUSR1 alla maschera
                 if(sigdelset(&signalSet, SIGINT | SIGUSR1) == -1){
-                    errExit("Failed to set the signals");
+                    errExit("\"<Client_0> Non sono riuscito a togliere SIGINT e SIGUSR1 dal set di segnali\\n\"");
                 }
                 if(sigprocmask(SIG_SETMASK, &signalSet, NULL) == -1){
-                    errExit("Failed to set the signal mask");
+                    errExit("<Client_0> Non sono riuscito a settare la maschera dei segnali\n");
                 }
                 break;
             }

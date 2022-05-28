@@ -51,7 +51,7 @@ int main(int argc, char * argv[]) {
     int semIdForIPC = semget(IPC_PRIVATE, 4, IPC_CREAT|S_IRUSR | S_IWUSR);
 
     if(semIdForIPC == -1){
-        errExit("failed to create semaphore for FIFO1");
+        errExit("<Server> Non sono riuscito a creare il semaforo per le IPC\n");
     }
     /* FIFO1=1
      * FIFO2=2
@@ -63,7 +63,7 @@ int main(int argc, char * argv[]) {
     argIPC.array=values;
 
     if(semctl(semIdForIPC,0,SETALL,argIPC)==-1){
-        errExit("semctl SETALL");
+        errExit("<Server> Non sono riuscito a settare i semafori delle IPC\n");
     }
 
 
@@ -85,6 +85,7 @@ int main(int argc, char * argv[]) {
     int n_files;
     read(fdfifo1, n_files, sizeof(n_files));
     printf("<Server> ricevuti %d file con cui lavorare", n_files);
+    int counterForMsgQ = n_files;
 
     //invio conferma al client
     //attach shmemory (il prof lo dichiara void e con dimensione NULL ES.5 N.4)
@@ -116,7 +117,6 @@ int main(int argc, char * argv[]) {
     //variabile di aiuto per la dimensione della message queue
     int sizeOfMessage = sizeof(struct mymsg) - sizeof(long);
 
-
     //INIZIO RICEZIONE
     while(1){
         /* da man 7 pipe, se si prova a leggere da una FIFO che non ha più processi
@@ -126,7 +126,7 @@ int main(int argc, char * argv[]) {
         if(closedIPC[0] == 0){
             leggi = read(fdfifo1,rcvFromFifo1,sizeof(rcvFromFifo1));
             if(leggi == -1) {
-                errExit("read error!");
+                errExit("<Server> Non sono riuscito a leggere dalla FIFO1\n");
             }
             else if(leggi == 0){ //tutti i client hanno scritto ed è stato letto tutto chiusura FIFO
                 closedIPC[0] = 1;
@@ -141,7 +141,7 @@ int main(int argc, char * argv[]) {
         if(closedIPC[1] == 0) {
             leggi = read(fdfifo2, rcvFromFifo2, sizeof(rcvFromFifo2));
             if (leggi == -1) {
-                errExit("read error!");
+                errExit("<Server> Non sono riuscito a leggere dalla FIFO2\n");
             }
             else if (leggi == 0) {
                 closedIPC[1] = 1;
@@ -159,31 +159,35 @@ int main(int argc, char * argv[]) {
          * allora server farà detach e remove della shared memory
          */
         if(closedIPC[2] == 0){
-            if(rcvFromMsgQ[cursor].mtype == 1){
+            if(rcvFromShM[cursor].mtype == 1){
                 closedIPC[2] = 1;
             }
             else if(rcvFromShM[cursor].mtype != 0){
                 fillTheBuffer(rcvFromShM[cursor], buffer, n_files, 3);
                 rcvFromMsgQ[cursor].mtype = 1;
-                cursor += sizeof(struct mymsg);
-                if(cursor >= sizeof(struct mymsg) * 50){
+                cursor++;
+                if(cursor == 50){
                     cursor = 0;
                 }
                 semOp(semIdForIPC, 3, 1);
             }
         }
 
-
-        //lettura message queue TODO mettere un contatore di volte in cui si è trovata la msgQ vuota, arrivato a quello si esce dal ciclo delle letture?
-        if(msgrcv(msqid, rcvFromMsgQ, sizeOfMessage, 0, IPC_NOWAIT) == -1) {
-            if (errno = ENOMSG)
-                printf("Message Queue vuota, proseguo oltre");
-            else
-                errExit("failed to recieve message from message queue");
-        }
-        else {
-            fillTheBuffer(*rcvFromMsgQ, buffer, n_files, 4);
-            semOp(msqid, 4, 1);
+        if(closedIPC[3] == 0){
+            //lettura message queue TODO mettere un contatore di volte in cui si è trovata la msgQ vuota, arrivato a quello si esce dal ciclo delle letture?
+            if(msgrcv(msqid, rcvFromMsgQ, sizeOfMessage, 0, IPC_NOWAIT) == -1) {
+                if (errno == ENOMSG)
+                    printf("<Server> Message Queue vuota, proseguo oltre");
+                else
+                    errExit("<Server> Non sono riuscito a ricevere un messaggio dalla message queue\n");
+            }
+            else {
+                fillTheBuffer(*rcvFromMsgQ, buffer, n_files, 4);
+                semOp(msqid, 4, 1);
+                counterForMsgQ--;
+                if(counterForMsgQ == 0)
+                    closedIPC[3] = 1;
+            }
         }
         //creazione file di output dopo ogni lettura si controlla se si son ricevute le 4 parti di un file TODO
         for(int i = 0; i < n_files; i++){
@@ -199,7 +203,7 @@ int main(int argc, char * argv[]) {
                 char *newName = strcat(buffer[i].pathname, "_out");
                 int fdNewFile = open(newName, O_WRONLY | O_APPEND | O_CREAT, S_IWUSR | S_IRUSR);
                 if(fdNewFile == -1)
-                    errExit("<Server> error while making of new file");
+                    errExit("<Server> Non sono riuscito a creare un nuovo file\n");
                 //con O_APPEND ad ogni write verrà tutto messo in fondo, nessuna sovrascrittura
                 ssize_t resultWrite; //lo userò per ogni write e per verificare che sia andata a buon fine
                 //TODO valutare se mettere i controlli dell'avvenuta write o meno
@@ -233,14 +237,8 @@ int main(int argc, char * argv[]) {
                 write(fdNewFile, pidToStr, sizeof(pidToStr));
                 write(fdNewFile, " tramite ShdMem]\n", strlen(" tramite ShdMem]\n"));
                 write(fdNewFile, buffer[i].shMem, strlen(buffer[i].shMem));
-
-
-
-
-
             }
         }
-
     }
 
     //TODO la creazione del file di output deve avvenire come vengono ricevute 4 parti di un file.
@@ -250,13 +248,13 @@ int main(int argc, char * argv[]) {
     rcvFromMsgQ->mtype = 1;
     int sizeOfResult = sizeof(struct mymsg) - sizeof(long);
     if(msgsnd(msqid, &rcvFromMsgQ, sizeOfResult, 0) == -1)
-        errExit("failed to send confirmation end of work");
+        errExit("<Server> Non sono riuscito a inviare la conferma di lavoro concluso\n");
 
     //TODO valutare come evitare che server elimini la msgQ prima client legga la conclusione lavori avvenuta
 
     //elimino msgqueue
     if(msgctl(msqid,IPC_RMID,NULL)==-1)
-        errExit("errore rimozione message queue");
+        errExit("<Server> Non sono riuscito a rimuovere la message queue\n");
 
 
 }
