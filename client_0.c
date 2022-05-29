@@ -23,11 +23,11 @@
 #include "shared_memory.h"
 
 #define BUFFER_SZ 150
-#define N_FILES 100
+#define N_FILES 100 //numero massimo di file da elaborato
 
 char currdir[BUFFER_SZ];
-char *files[N_FILES]; //pathname file
-int n_files = 0;
+char *files[N_FILES]; //array contenente tutti i pathname
+int *n_files = 0;
 char *fifo1name = "/tmp/myfifo1";
 char *fifo2name ="/tmp/myfifo2";
 char *fifoDummy = "/tmp/myFifoDummy";
@@ -40,7 +40,7 @@ void sigHandler(int sig) {
         }
     }
     else if(sig == SIGINT) {
-        printf("Client_0 in attesa...\n");
+        printf("Avvio di Client_0...\n");
     }
 }
 /*
@@ -50,7 +50,6 @@ size_t append2Path(char *directory){
     return lastPathEnd;
 }
 */
-//TODO manca open FIFO2
 int main(int argc, char * argv[]) {
 
     //controllo gli argomenti passati
@@ -74,7 +73,7 @@ int main(int argc, char * argv[]) {
     if(sigfillset(&signalSet) == -1){
         errExit("<Client_0> Non sono riuscito a riempire il set di segnali\n");
     }
-    //aggiunta dei segnali SIGINT e SIGUSR1 alla maschera
+    //rimozione dei segnali SIGINT e SIGUSR1 alla maschera
     if(sigdelset(&signalSet, SIGINT | SIGUSR1) == -1){
         errExit("<Client_0> Non sono riuscito a settare i segnali\n");
     }
@@ -88,9 +87,19 @@ int main(int argc, char * argv[]) {
     }
     //in attesa dei segnali desiderati
     while(1){
+        printf("<Client_0> In attesa\n");
         pause();
+
+        //aperture FIFO + invio PID Client_0
+        int fdFIFO1 = open(fifo1name, O_WRONLY);
+        int fdFIFO2 = open(fifo2name,O_WRONLY);
+        write(fdFIFO1, getpid(), sizeof(getpid()));
+
         //settaggio maschera
         if(sigaddset(&signalSet, SIGINT | SIGUSR1) == -1){
+            errExit("<Client_0> Non sono riuscito a riaggiungere i segnali al set\n");
+        }
+        if(sigprocmask(SIG_SETMASK, &signalSet, NULL) == -1){
             errExit("<Client_0> Non sono riuscito a resettare la maschera dei segnali\n");
         }
         //impostazione della directory
@@ -103,14 +112,12 @@ int main(int argc, char * argv[]) {
             errExit("<Client_0> Non sono riuscito a ottenre la directory attuale\n");
         }
         
-        printf("Ciao %s, ora inizio l’invio dei file contenuti in %s", getenv("USER"), currdir);
+        printf("<Client_0> Ciao %s, ora inizio l’invio dei file contenuti in %s", getenv("USER"), currdir);
         
         search(files, currdir, n_files);
-        //aperture FIFO + invio n° file
-        int fd1 = open(fifo1name,O_WRONLY);
-        int fd2 = open(fifo2name,O_WRONLY);
 
-        write(fd1, n_files, sizeof(n_files));
+        //invio del numero di files al server
+        write(fdFIFO1, *n_files, sizeof(*n_files));
 
         //server crea una fifo ad hoc per inviare l'id del segmento di memoria da cui successivamente
         //il client otterrà l'ok dal server
@@ -121,31 +128,18 @@ int main(int argc, char * argv[]) {
         //stessa roba con msgQ
         int msgQId; //sarebbe la msgQ TODO
         read(fdDummy, msgQId, sizeof(msgQId));
-        close(fdDummy); //chiusura della FIFO
 
-        //attende di ricevere messaggio da shared memory
-        struct mymsg *shmPointer = (struct mymsg *) get_shared_memory(shmId, 0);
-        while(shmPointer->mtype != 1); //rimane bloccato fintanto che non riceve conferma
-        printf("<Client_0> ricevuta conferma dal server");
-        free_shared_memory(shmPointer);
-
-        //creazione del semaforo che verrà usato dai figli
-        int semForChild=semget(IPC_PRIVATE, 1, S_IRUSR | S_IWUSR);
-        if(semForChild == -1)
-            errExit("<Client_0> Non sono riuscito a creare il set di semafori\n");
-
-        //inizializzazione del semaforo
-        union semun argSemForChild;
-        argSemForChild.val=n_files; //set del valore iniziale
-        if(semctl(semForChild, 0, SETALL, argSemForChild) == -1){
-            errExit("<Client_0> Non sono riuscito a settare i semafori per l'attesa collettiva dei figli\n");
-        }
+        //lettura ID dei semafori generati dal server
+        int semIdForIPC;
+        read(fdDummy, semIdForIPC, sizeof(semIdForIPC));
+        close(fdDummy);
 
         //definizione delle strutture che verranno usate per l'invio
         struct mymsg *sendByFIFO1;
         struct mymsg *sendByFIFO2;
         struct mymsg *sendByShMemory;
         struct mymsg sendByMsgQ;
+        struct mymsg *dummyShM; //servirà per la shared memory con i client figli
 
         //attach della shared memory
         sendByShMemory = (struct mymsg*) get_shared_memory(shmId, 0);
@@ -154,20 +148,33 @@ int main(int argc, char * argv[]) {
          * maxCursor è la dimensione massima della shared memory
          */
         int cursor = 0, maxCursor = 50; //cambiato da sizeof(struct)*50
+
+        //attende di ricevere messaggio conferma ricezione numero file tramite shared memory
+        while(sendByShMemory[0].mtype != 1); //rimane bloccato fintanto che non riceve conferma
+        printf("<Client_0> ricevuta conferma dal server");
+
+        //creazione del semaforo per partenza sincrona dei figli
+        int semForChild = semget(IPC_PRIVATE, 1, S_IRUSR | S_IWUSR);
+        if(semForChild == -1)
+            errExit("<Client_0> Non sono riuscito a creare il set di semafori\n");
+
+        //inizializzazione del semaforo
+        union semun argSemForChild;
+        argSemForChild.val = n_files; //set del valore iniziale
+        if(semctl(semForChild, 0, SETALL, argSemForChild) == -1){
+            errExit("<Client_0> Non sono riuscito a settare i semafori per l'attesa collettiva dei figli\n");
+        }
+
         //riempio la shared memory di mtype = 0 per agevolare lettura da server
-        for(int i = 0; i < sizeof(struct mymsg)*50; i++){
+        for(int i = 0; i < 50; i++){
             sendByShMemory[i].mtype = 0;
         }
 
-        //lettura ID dei semafori generati dal server
-        int semIdForIPC;
-        read(fdDummy, semIdForIPC, sizeof(semIdForIPC));
-        close(fdDummy);
-
+        //mutex per accesso al valore del semaforo per la singola IPC e gestione del cursore della shared memory
         int mutex = semget(IPC_PRIVATE,5,IPC_CREAT|S_IRUSR|S_IWUSR);
-        int values[]={1,1,1,1,1};
+        int values[] = {1,1,1,1,1};
         union semun argMutex;
-        argMutex.array=values;
+        argMutex.array = values;
 
         if(semctl(mutex, 0, SETALL, argSemForChild) == -1)
             errExit("<Client_0> Non sono riuscito a settare il semaforo mutex\n");
@@ -176,13 +183,13 @@ int main(int argc, char * argv[]) {
         //generazione figli
         pid_t pid;
         for(int child = 0; child < n_files; child++){
-            pid=fork();
+            pid = fork();
             if(pid == -1)
                 errExit("<Client_0> Non sono riuscito a fare la fork\n");
             else if(pid == 0){
+                //array di supporto per il singolo figlio per verificare se ha già inviato tramite una IPC
                 int checkinvio[]={0,0,0,0};
                 struct stat fileStatistics;
-                struct mymsg *dummyShM;
                 char *buff;
                 //salvataggio del pid del figlio
                 sendByFIFO1->mtype = getpid();
@@ -216,7 +223,6 @@ int main(int argc, char * argv[]) {
                         else if(semFIFO1value > 0){
                             semOp(semIdForIPC,1,-1);//mi prenoto il posto nell'IPC
                             semOp(mutex,1,1); //lascio accedere alla mutex al prossimo client
-                            int fdFIFO1 = open(fifo1name, S_IWUSR);
                             if(write(fdFIFO1, sendByFIFO1, sizeof(sendByFIFO1)) == -1){
                                 errExit("<Client_0> Non sono riuscito a scrivere nella FIFO1\n");
                             }
@@ -224,7 +230,6 @@ int main(int argc, char * argv[]) {
                             close(fdFIFO1);
                         }
                     }
-
 
                     //scrittura in FIFO2
                     if(checkinvio[1]!=1){
@@ -235,7 +240,6 @@ int main(int argc, char * argv[]) {
                         else if(semFIFO2value > 0){
                             semOp(semIdForIPC,2,-1);
                             semOp(mutex,2,1);
-                            int fdFIFO2 = open(fifo2name, S_IWUSR);
                             if(write(fdFIFO2, sendByFIFO2, sizeof(sendByFIFO2)) == -1){
                                 errExit("<Client_0> Non sono riuscito a scrivere nella FIFO2\n");
                             }
@@ -243,7 +247,6 @@ int main(int argc, char * argv[]) {
                             close(fdFIFO2);
                         }
                     }
-
 
                     //scrittura in Shared Memory
                     if(checkinvio[2]!=1) {
@@ -259,8 +262,8 @@ int main(int argc, char * argv[]) {
                             sendByShMemory[cursor].mtype = dummyShM->mtype;//copio il pid di dummy nella shared memory
                             sendByShMemory[cursor].pathname = dummyShM->pathname; //TODO forse occorre strcpy
                             sendByShMemory[cursor].portion = dummyShM->portion;
-
                             cursor++;
+
                             if (cursor == maxCursor)
                                 cursor = 0;
                             semOp(mutex, 5, 1);
@@ -301,6 +304,12 @@ int main(int argc, char * argv[]) {
                     if(msgrcv(msgQId, &result, sizeOfResult, 1, 0) != -1)
                         flag = 0;
                 }
+
+                //rimozione dei semafori semForChild e mutex
+                if(semctl(semForChild, 0, IPC_RMID, 0) == -1)
+                    errExit("<Client_0> Non sono riuscito a eliminare il semaforo semForChild\n");
+                if(semctl(mutex, 0, IPC_RMID, 0) == -1)
+                    errExit("<Client_0> Non sono riuscito a eliminare il semaforo mutex\n");
 
                 //riempio la signalSet con tutti i segnali
                 if(sigfillset(&signalSet) == -1){

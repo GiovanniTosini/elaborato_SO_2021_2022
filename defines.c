@@ -10,7 +10,7 @@
 #include <sys/msg.h>
 
 //scorre i file, verifica che siano validi e li salva in "*files"
-void search(char *files[], char currdir[], int n_files){
+void search(char *files[], char currdir[], int *n_files){
 
 	struct dirent *dentry;
     struct stat sb; //struttura di supporto per verificare la dimensione del singolo file
@@ -68,12 +68,8 @@ void divideString(char buff[],char sendByFIFO1[],char sendByFIFO2[],char sendByM
         memcpy(subBuffer[i],&buff[offset],step);
         offset += step;
     }
-
-    
-
     strcpy(sendByFIFO1, &subBuffer[0]);
     strcpy(sendByFIFO2, &subBuffer[1]);
     strcpy(sendByMsgQ, &subBuffer[2]);
     strcpy(sendByShM, &subBuffer[3]);
-
 }
