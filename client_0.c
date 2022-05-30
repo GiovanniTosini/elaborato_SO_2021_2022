@@ -24,13 +24,14 @@
 
 #define BUFFER_SZ 150
 #define N_FILES 100 //numero massimo di file da elaborato
+#define MAX_PATH 256
 
 char currdir[BUFFER_SZ];
-char *files[N_FILES]; //array contenente tutti i pathname
-int *n_files = 0;
+char files[N_FILES][MAX_PATH]; //array contenente tutti i pathname
+int n_files = 0; //TODO perché è qui? non serve
 char *fifo1name = "/tmp/myfifo1";
 char *fifo2name ="/tmp/myfifo2";
-char *fifoDummy = "/tmp/myFifoDummy";
+char *fifoDummy = "/tmp/myfifodummy";
 
 void sigHandler(int sig) {
     if(sig == SIGUSR1){
@@ -74,7 +75,10 @@ int main(int argc, char * argv[]) {
         errExit("<Client_0> Non sono riuscito a riempire il set di segnali\n");
     }
     //rimozione dei segnali SIGINT e SIGUSR1 alla maschera
-    if(sigdelset(&signalSet, SIGINT | SIGUSR1) == -1){
+    if(sigdelset(&signalSet, SIGINT) == -1){
+        errExit("<Client_0> Non sono riuscito a settare i segnali\n");
+    }
+    if(sigdelset(&signalSet, SIGUSR1) == -1){
         errExit("<Client_0> Non sono riuscito a settare i segnali\n");
     }
     if(sigprocmask(SIG_SETMASK, &signalSet, NULL) == -1){
@@ -82,59 +86,87 @@ int main(int argc, char * argv[]) {
     }
 
     //settaggio dei segnali al sigHandler
-    if(signal(SIGUSR1 | SIGINT, sigHandler) == SIG_ERR){
+    if(signal(SIGUSR1, sigHandler) == SIG_ERR){
+        errExit("<Client_0> Non sono riuscito a settare il signal handler\n");
+    }
+    if(signal(SIGINT, sigHandler) == SIG_ERR){
         errExit("<Client_0> Non sono riuscito a settare il signal handler\n");
     }
     //in attesa dei segnali desiderati
     while(1){
-        printf("<Client_0> In attesa\n");
+        printf("<Client_0> In attesa di CTRL+C...\n");
         pause();
 
         //aperture FIFO + invio PID Client_0
         int fdFIFO1 = open(fifo1name, O_WRONLY);
         int fdFIFO2 = open(fifo2name,O_WRONLY);
-        pid_t pidclient=getpid();
-        write(fdFIFO1, pidclient, sizeof(pidclient));
+        printf("<Client_0> Ho aperto FIFO1 e FIFO2\n");
+        pid_t pidclient = getpid();
+        write(fdFIFO1, &pidclient, sizeof(pid_t));
+        printf("<Client_0> Invio il mio PID: %d\n", pidclient);
 
         //settaggio maschera
-        if(sigaddset(&signalSet, SIGINT | SIGUSR1) == -1){
+        if(sigaddset(&signalSet, SIGINT) == -1){
+            errExit("<Client_0> Non sono riuscito a riaggiungere i segnali al set\n");
+        }
+        if(sigaddset(&signalSet, SIGUSR1) == -1){
             errExit("<Client_0> Non sono riuscito a riaggiungere i segnali al set\n");
         }
         if(sigprocmask(SIG_SETMASK, &signalSet, NULL) == -1){
             errExit("<Client_0> Non sono riuscito a resettare la maschera dei segnali\n");
         }
+        printf("<Client_0> Ho risettato i segnali\n");
         //impostazione della directory
         if(chdir(argv[1]) == -1){
             errExit("<Client_0> Non sono riuscito a cambiare directory\n");
         }
+        printf("<Client_0> Ho cambiato directory, mi sono spostato in %s\n", argv[1]);
 
         //otteniamo la current working directory
         if(getcwd(currdir,sizeof(currdir)) == NULL){
             errExit("<Client_0> Non sono riuscito a ottenre la directory attuale\n");
         }
         
-        printf("<Client_0> Ciao %s, ora inizio l’invio dei file contenuti in %s", getenv("USER"), currdir);
-        
-        search(files, currdir, n_files);
+        printf("<Client_0> Ciao %s, ora inizio l’invio dei file contenuti in %s\n", getenv("USER"), currdir);
+
+        printf("<Client_0> Inizio a cercare\n");
+        n_files = search(files, currdir); //TODO n_files non viene aggiornato
+        printf("<Client_0> Ho finito, ho trovato %d files\n", n_files);
 
         //invio del numero di files al server
-        write(fdFIFO1, *n_files, sizeof(*n_files));
+        write(fdFIFO1, &n_files, sizeof(int));
+
+        //TODO TEST
+        close(fdFIFO1);
+        fdFIFO1 = open(fifo1name,O_RDONLY);
+        //TODO TEST
 
         //server crea una fifo ad hoc per inviare l'id del segmento di memoria da cui successivamente
         //il client otterrà l'ok dal server
+        //TODO TEST
+        /*
         int fdDummy = open(fifoDummy, O_RDONLY);
+        printf("<Client_0> Ho aperto la fifo dummy\n");
+        //TODO TEST
+         */
         int shmId;
-        read(fdDummy, shmId, sizeof(shmId));
+        printf("<Client_0> Sto per ricevere l'ID della shared memory\n");
+        read(fdFIFO1, &shmId, sizeof(shmId));
+        printf("smhid: %d\n", shmId);
 
         //stessa roba con msgQ
         int msgQId; //sarebbe la msgQ TODO
-        read(fdDummy, msgQId, sizeof(msgQId));
+        printf("<Client_0> Sto per ricevere l'ID della message queue\n");
+        read(fdFIFO1, &msgQId, sizeof(msgQId));
+        printf("msgqid: %d\n", msgQId);
 
         //lettura ID dei semafori generati dal server
         int semIdForIPC;
-        read(fdDummy, semIdForIPC, sizeof(semIdForIPC));
-        close(fdDummy);
+        read(fdFIFO1, &semIdForIPC, sizeof(semIdForIPC));
+        if(close(fdFIFO1) == -1)
+            errExit("<Client_0> Non son riuscito a chiudere la fifo dummy\n");
 
+        printf("<Client_0> Ho chiuso la fifo dummy\n");
         //definizione delle strutture che verranno usate per l'invio
         struct mymsg *sendByFIFO1;
         struct mymsg *sendByFIFO2;
@@ -143,6 +175,7 @@ int main(int argc, char * argv[]) {
         struct mymsg *dummyShM; //servirà per la shared memory con i client figli
 
         //attach della shared memory
+        printf("Sto per fare la prima attach");
         sendByShMemory = (struct mymsg*) get_shared_memory(shmId, 0);
         /* variabili per scorrere lungo la shared memory
          * cursor è il puntatore al blocco attuale
@@ -173,11 +206,11 @@ int main(int argc, char * argv[]) {
 
         //mutex per accesso al valore del semaforo per la singola IPC e gestione del cursore della shared memory
         int mutex = semget(IPC_PRIVATE,5,IPC_CREAT|S_IRUSR|S_IWUSR);
-        int values[] = {1,1,1,1,1};
+        unsigned short values[] = {1,1,1,1,1};
         union semun argMutex;
         argMutex.array = values;
 
-        if(semctl(mutex, 0, SETALL, argSemForChild) == -1)
+        if(semctl(mutex, 0, SETALL, argMutex) == -1)
             errExit("<Client_0> Non sono riuscito a settare il semaforo mutex\n");
 
 
@@ -191,7 +224,7 @@ int main(int argc, char * argv[]) {
                 //array di supporto per il singolo figlio per verificare se ha già inviato tramite una IPC
                 int checkinvio[]={0,0,0,0};
                 struct stat fileStatistics;
-                char *buff;
+                char *buff = "";
                 //salvataggio del pid del figlio
                 sendByFIFO1->mtype = getpid();
                 sendByFIFO2->mtype = getpid();

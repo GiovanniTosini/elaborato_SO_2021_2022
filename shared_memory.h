@@ -17,7 +17,7 @@ struct Request {
 
 // The alloc_shared_memory method creates, if it does not exist, a shared
 // memory segment with size bytes and shmKey key.
-// It returns the shmid on success, otherwise it terminates the calling process
+// It returns the shmId on success, otherwise it terminates the calling process
 int alloc_shared_memory(key_t shmKey, size_t size); //TODO forse vuole una 's' in più
 
 // The get_shared_memory attaches a shared memory segment in the logic address space

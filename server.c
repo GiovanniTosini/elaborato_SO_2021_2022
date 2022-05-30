@@ -28,65 +28,72 @@
  * - 4 -> MsgQueue
  */
 
-/* PID del Client_0, fifo1, fifo2, shmid, puntatore alla shm, msgqid
+/* PID del Client_0, fifo1, fifo2, shmId, puntatore alla shm, msgqid
  * dichiarate globalmente per permettere la chiusura
  * in caso di SIGINT
  */
 pid_t pidClient_0;
 int fdfifo1;
 int fdfifo2;
-int shmid;
-int msqid;
+int shmId;
+int msQId;
 struct mymsg *rcvFromFifo1, *rcvFromFifo2, *rcvFromShM, *rcvFromMsgQ;
+char *fifo1name = "/tmp/myfifo1";
+char *fifo2name = "/tmp/myfifo2";
+char *fifoDummy = "/tmp/myfifodummy";
 
 void fillTheBuffer(struct mymsg rcvFrom, struct myfile buffer[], int n_files, int ipc);
 void serverSigHandler(int sig);
 
 int main() {
-    char *fifo1name = "/tmp/myfifo1";
-    char *fifo2name = "/tmp/myfifo2";
-    char *fifoDummy = "/tmp/myFifoDummy";
 
+    printf("<Server> Avvio...\n");
     //creo la FIFO1
-    int fifo1 = mkfifo(fifo1name,S_IRUSR|S_IWUSR);
-    
+    if(mkfifo(fifo1name,S_IRUSR|S_IWUSR) == -1)
+        errExit("<Server> Non sono riuscito a creare la fifo1 a riga 51");
+    printf("<Server> Ho creato la FIFO1\n");
+
     //creo la FIFO2
-    int fifo2 = mkfifo(fifo2name,S_IRUSR|S_IWUSR);
-    
+    if(mkfifo(fifo2name,S_IRUSR|S_IWUSR) == -1)
+        errExit("<Server> Non sono riuscito a creare la fifo2 a riga 55");
+    printf("<Server> Ho creato la FIFO2\n");
+
     //creo la shared memory
-    shmid = alloc_shared_memory(IPC_PRIVATE, sizeof(struct mymsg) * 50);
+    shmId = alloc_shared_memory(IPC_PRIVATE, sizeof(struct mymsg) * 50);
+    printf("<Server> Ho allocato memoria la shared memory, con id: %d\n", shmId);
     
     //creo la msg queue
-    msqid = msgget(IPC_PRIVATE,IPC_CREAT|S_IRUSR|S_IWUSR);
+    msQId = msgget(IPC_PRIVATE, IPC_CREAT | S_IRUSR | S_IWUSR);
+    printf("<Server> Ho creato la coda di messaggi, con id: %d\n", msQId);
 
     //definizione semafori gestione IPC (max 50 msg per IPC)
     int semIdForIPC = semget(IPC_PRIVATE, 4, IPC_CREAT|S_IRUSR | S_IWUSR);
     if(semIdForIPC == -1){
         errExit("<Server> Non sono riuscito a creare il semaforo per le IPC\n");
     }
+    printf("<Server> Ho creato il set di semafori per le IPC\n");
     /* FIFO1=1
      * FIFO2=2
      * MSGQueue=3
      * SHdMem=
      */
-    int values[]={50,50,50,50};
+    unsigned short values[]={50,50,50,50};
     union semun argIPC;
-    argIPC.array=values;
+    argIPC.array = values;
 
     if(semctl(semIdForIPC,0,SETALL,argIPC)==-1){
         errExit("<Server> Non sono riuscito a settare i semafori delle IPC\n");
     }
+    printf("<Server> Ho settato il set dei semafori per le IPC\n");
 
     //apertura FIFO
     fdfifo1 = open(fifo1name,O_RDONLY);
     fdfifo2 = open(fifo2name, O_RDONLY);
 
-    //attach shmemory (il prof lo dichiara void e con dimensione NULL ES.5 N.4)
-    //PROBLEMA: è possibile tenere le flag per read/write, solo read ma non solo write...
-    rcvFromShM = (struct mymsg*) get_shared_memory(shmid, 0);
-
     //ricezione PID di CLient_0
-    read(fdfifo1, pidClient_0, sizeof(pidClient_0));
+    printf("<Server> Ricezione PID Client_0\n");
+    read(fdfifo1, &pidClient_0, sizeof(pidClient_0));
+    printf("<Server> Ho ricevuto il PID: %d del Client_0\n", pidClient_0);
 
     if(signal(SIGINT, serverSigHandler) == SIG_ERR)
         errExit("<Server> Non sono riuscito a settare il signal handler per SIGINT");
@@ -95,19 +102,45 @@ int main() {
 
         //leggo il numero di file
         int n_files;
-        read(fdfifo1, n_files, sizeof(n_files));
-        printf("<Server> ricevuti %d file con cui lavorare", n_files);
+        read(fdfifo1, &n_files, sizeof(n_files));
+        printf("<Server> ricevuti %d file con cui lavorare\n", n_files);
         int counterForMsgQ = n_files;
 
-        //apro la FIFO e invio l'ID della shared memory e della msg queue
-        int fifoD = mkfifo(fifoDummy, S_IRUSR|S_IWUSR);
-        int fdDummy = open(fifoDummy, O_WRONLY);
-        write(fdDummy,shmid,sizeof(shmid));
-        write(fdDummy,msqid,sizeof(msqid));
-        write(fdDummy,semIdForIPC,sizeof(semIdForIPC));
+        //TODO TEST
+        close(fdfifo1);
+        fdfifo1 = open(fifo1name,O_WRONLY);
+        //TODO TEST
 
-        close(fdDummy);
-        unlink(fdDummy);
+        //apro la FIFO e invio l'ID della shared memory e della msg queue
+        //TODO TEST
+        /*
+        if(mkfifo(fifoDummy, S_IRUSR|S_IWUSR) == -1)
+            errExit("<Server> Non sono riuscito a creare la fifo dummy\n");
+        printf("<Server> Ho creato la fifo dummy\n");
+        printf("<Server> Apro la fifo dummy\n");
+        int fdDummy;
+        if((fdDummy = open(fifoDummy, O_WRONLY)) == -1)
+            errExit("<Server> Non sono riuscito ad aprire la fifo dummy\n");
+        */
+        printf("<Server> Ho aperto fifo dummy\n");
+        printf("<Server> Invio ID della shared memory a Client_0");
+        write(fdfifo1, &shmId, sizeof(int));
+        printf("<Server> Invio ID della message queue a Client_0");
+        write(fdfifo1, &msQId, sizeof(int));
+        printf("<Server> Invio ID del set di semafori a Client_0");
+        write(fdfifo1,&semIdForIPC,sizeof(int));
+
+        //TODO TEST
+        /*
+        if(close(fdDummy) == -1)
+            errExit("<Server> Ho chiuso la fifo dummy\n");
+        if(unlink(fifoDummy) == -1)
+            errExit("<Server> Ho fatto l'unlink di fifo dummy\n");
+        */
+        //TODO TEST
+        //attach shmemory (il prof lo dichiara void e con dimensione NULL ES.5 N.4)
+        //PROBLEMA: è possibile tenere le flag per read/write, solo read ma non solo write...
+        rcvFromShM = (struct mymsg*) get_shared_memory(shmId, 0);
 
         //invio conferma su shmemory
         rcvFromShM[0].mtype = 1;
@@ -188,7 +221,7 @@ int main() {
 
             if(closedIPC[3] == 0){
                 //lettura message queue TODO mettere un contatore di volte in cui si è trovata la msgQ vuota, arrivato a quello si esce dal ciclo delle letture?
-                if(msgrcv(msqid, rcvFromMsgQ, sizeOfMessage, 0, IPC_NOWAIT) == -1) {
+                if(msgrcv(msQId, rcvFromMsgQ, sizeOfMessage, 0, IPC_NOWAIT) == -1) {
                     if (errno == ENOMSG)
                         printf("<Server> Message Queue vuota, proseguo oltre");
                     else
@@ -196,7 +229,7 @@ int main() {
                 }
                 else {
                     fillTheBuffer(*rcvFromMsgQ, buffer, n_files, 4);
-                    semOp(msqid, 4, 1);
+                    semOp(msQId, 4, 1);
                     counterForMsgQ--;
                     if(counterForMsgQ == 0)
                         closedIPC[3] = 1;
@@ -219,7 +252,7 @@ int main() {
             if(fdNewFile == -1)
                 errExit("<Server> Non sono riuscito a creare un nuovo file\n");
             //con O_APPEND ad ogni write verrà tutto messo in fondo, nessuna sovrascrittura
-            ssize_t resultWrite; //lo userò per ogni write e per verificare che sia andata a buon fine
+            //ssize_t resultWrite; //lo userò per ogni write e per verificare che sia andata a buon fine
             //TODO valutare se mettere i controlli dell'avvenuta write o meno
             char *newNewName = strcat(newName, ":\n");
             write(fdNewFile, newNewName, strlen(newNewName));
@@ -258,7 +291,7 @@ int main() {
         //invio conferma fine lavoro
         rcvFromMsgQ->mtype = 1;
         int sizeOfResult = sizeof(struct mymsg) - sizeof(long);
-        if(msgsnd(msqid, &rcvFromMsgQ, sizeOfResult, 0) == -1)
+        if(msgsnd(msQId, &rcvFromMsgQ, sizeOfResult, 0) == -1)
             errExit("<Server> Non sono riuscito a inviare la conferma di lavoro concluso\n");
     }
 }
@@ -314,16 +347,16 @@ void serverSigHandler(int sig) {
     if(sig == SIGINT){
         printf("<Server> Terminazione del processo Client_0.\n");
         if(kill(pidClient_0, SIGTERM) == -1){
-            errExit("<Server> Ops, il Client_0 è sopravvissuto");
+            errExit("<Server> Ops, il Client_0 è sopravvissuto\n");
         }
         close(fdfifo1);
-        unlink(fdfifo1);
+        unlink(fifo1name);
         close(fdfifo2);
-        unlink(fdfifo2);
+        unlink(fifo2name);
         free_shared_memory(rcvFromShM);
-        remove_shared_memory(shmid);
-        msgctl(msqid, IPC_RMID, 0);
+        remove_shared_memory(shmId);
+        msgctl(msQId, IPC_RMID, 0);
         if(kill(getpid(), SIGTERM) == -1)
-            errExit("<Server> Non sono riuscito a fare seppuku");
+            errExit("<Server> Non sono riuscito a fare seppuku\n");
     }
 }
