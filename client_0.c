@@ -93,7 +93,8 @@ int main(int argc, char * argv[]) {
         //aperture FIFO + invio PID Client_0
         int fdFIFO1 = open(fifo1name, O_WRONLY);
         int fdFIFO2 = open(fifo2name,O_WRONLY);
-        write(fdFIFO1, getpid(), sizeof(getpid()));
+        pid_t pidclient=getpid();
+        write(fdFIFO1, pidclient, sizeof(pidclient));
 
         //settaggio maschera
         if(sigaddset(&signalSet, SIGINT | SIGUSR1) == -1){

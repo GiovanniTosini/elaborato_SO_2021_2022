@@ -42,7 +42,7 @@ struct mymsg *rcvFromFifo1, *rcvFromFifo2, *rcvFromShM, *rcvFromMsgQ;
 void fillTheBuffer(struct mymsg rcvFrom, struct myfile buffer[], int n_files, int ipc);
 void serverSigHandler(int sig);
 
-int main(int argc, char *argv[]) {
+int main() {
     char *fifo1name = "/tmp/myfifo1";
     char *fifo2name = "/tmp/myfifo2";
     char *fifoDummy = "/tmp/myFifoDummy";
