@@ -37,7 +37,8 @@ int fdfifo1;
 int fdfifo2;
 int shmId;
 int msQId;
-struct mymsg *rcvFromFifo1, *rcvFromFifo2, *rcvFromShM, *rcvFromMsgQ;
+int semIdForIPC;
+struct mymsg rcvFromFifo1, rcvFromFifo2, rcvFromShM[50], rcvFromMsgQ;
 char *fifo1name = "/tmp/myfifo1";
 char *fifo2name = "/tmp/myfifo2";
 //char *fifoDummy = "/tmp/myfifodummy"; momentaneamente sfrattata
@@ -67,7 +68,7 @@ int main() {
     printf("<Server> Ho creato la coda di messaggi, con id: %d\n", msQId);
 
     //definizione semafori gestione IPC (max 50 msg per IPC)
-    int semIdForIPC = semget(IPC_PRIVATE, 4, IPC_CREAT|S_IRUSR | S_IWUSR);
+    semIdForIPC = semget(IPC_PRIVATE, 4, IPC_CREAT|S_IRUSR | S_IWUSR);
     if(semIdForIPC == -1){
         errExit("<Server> Non sono riuscito a creare il semaforo per le IPC\n");
     }
@@ -103,7 +104,7 @@ int main() {
         //leggo il numero di file
         int n_files;
         read(fdfifo1, &n_files, sizeof(n_files));
-        printf("<Server> ricevuti %d file con cui lavorare\n", n_files);
+        printf("<Server> Ricevuti %d file con cui lavorare\n", n_files);
         int counterForMsgQ = n_files;
 
         //chiusura momentanea per poi riaprirla in scrittura per inviare ID di shm, msgq e semIdForIPC
@@ -127,7 +128,7 @@ int main() {
 
         //attach shmemory (il prof lo dichiara void e con dimensione NULL ES.5 N.4)
         //PROBLEMA: è possibile tenere le flag per read/write, solo read ma non solo write...
-        rcvFromShM = (struct mymsg*) get_shared_memory(shmId, 0);
+        get_shared_memory(shmId, 0, rcvFromShM);
 
         //invio conferma su shmemory
         rcvFromShM[0].mtype = 1;
@@ -138,10 +139,6 @@ int main() {
         printf("<Server> Inizializzo la struttura buffer\n");
         for(int i = 0; i < n_files; i++){
             buffer[i].pid = 0;
-            buffer[i].fifo1 = NULL;
-            buffer[i].fifo2 = NULL;
-            buffer[i].shMem = NULL;
-            buffer[i].msgQ = NULL;
         }
         //inizializzazione del cursore per shared memory
         //leggi sarà la variabile in cui si salvano i byte letti
@@ -159,7 +156,8 @@ int main() {
              */
             //leggo dalla fifo1 TODO se non trova da leggere si blocca
             if(closedIPC[0] == 0){
-                leggi = read(fdfifo1,rcvFromFifo1,sizeof(rcvFromFifo1));
+                printf("<Server Verifico la fifo1\n");
+                leggi = read(fdfifo1, &rcvFromFifo1,sizeof(rcvFromFifo1));
                 if(leggi == -1) {
                     errExit("<Server> Non sono riuscito a leggere dalla FIFO1\n");
                 }
@@ -167,14 +165,15 @@ int main() {
                     closedIPC[0] = 1;
                 }
                 else {
-                    fillTheBuffer(*rcvFromFifo1, buffer, n_files, 1);
+                    fillTheBuffer(rcvFromFifo1, buffer, n_files, 1);
                     semOp(semIdForIPC,1,1);
                 }
             }
 
             //lettura da FIFO2 TODO se non trova da leggere si blocca
             if(closedIPC[1] == 0) {
-                leggi = read(fdfifo2, rcvFromFifo2, sizeof(rcvFromFifo2));
+                printf("<Server Verifico la fifo2\n");
+                leggi = read(fdfifo2, &rcvFromFifo2, sizeof(rcvFromFifo2));
                 if (leggi == -1) {
                     errExit("<Server> Non sono riuscito a leggere dalla FIFO2\n");
                 }
@@ -182,7 +181,7 @@ int main() {
                     closedIPC[1] = 1;
                 }
                 else {
-                    fillTheBuffer(*rcvFromFifo2, buffer, n_files, 2);
+                    fillTheBuffer(rcvFromFifo2, buffer, n_files, 2);
                     semOp(semIdForIPC, 2, 1);
                 }
             }
@@ -194,12 +193,13 @@ int main() {
              * allora server farà detach e remove della shared memory
              */
             if(closedIPC[2] == 0){
+                printf("<Server Verifico la shared memory\n");
                 if(rcvFromShM[cursor].mtype == 1){
                     closedIPC[2] = 1;
                 }
-                else if(rcvFromShM[cursor].mtype != 0){
+                else if(rcvFromShM[cursor].mtype == 0){
                     fillTheBuffer(rcvFromShM[cursor], buffer, n_files, 3);
-                    rcvFromMsgQ[cursor].mtype = 1;
+                    rcvFromShM[cursor].mtype = 1;
                     cursor++;
                     if(cursor == 50){
                         cursor = 0;
@@ -209,15 +209,16 @@ int main() {
             }
 
             if(closedIPC[3] == 0){
+                printf("<Server Verifico la message queue\n");
                 //lettura message queue TODO mettere un contatore di volte in cui si è trovata la msgQ vuota, arrivato a quello si esce dal ciclo delle letture?
-                if(msgrcv(msQId, rcvFromMsgQ, sizeOfMessage, 0, IPC_NOWAIT) == -1) {
+                if(msgrcv(msQId, &rcvFromMsgQ, sizeOfMessage, 0, IPC_NOWAIT) == -1) {
                     if (errno == ENOMSG)
                         printf("<Server> Message Queue vuota, proseguo oltre\n");
                     else
                         errExit("<Server> Non sono riuscito a ricevere un messaggio dalla message queue\n");
                 }
                 else {
-                    fillTheBuffer(*rcvFromMsgQ, buffer, n_files, 4);
+                    fillTheBuffer(rcvFromMsgQ, buffer, n_files, 4);
                     semOp(msQId, 4, 1);
                     counterForMsgQ--;
                     if(counterForMsgQ == 0)
@@ -234,7 +235,7 @@ int main() {
             int lenOfShM = strlen(buffer[i].shMem);
             int lenOfMsgQ = strlen(buffer[i].msgQ);*/
             char pidToStr[8];
-            sprintf(pidToStr, "%ld", buffer[i].pid);
+            sprintf(pidToStr, "%d", buffer[i].pid);
             //ottengo il pathname completo del file di out (quello con _out) alla fine
             char *newName = strcat(buffer[i].pathname, "_out");
             int fdNewFile = open(newName, O_WRONLY | O_APPEND | O_CREAT, S_IWUSR | S_IRUSR);
@@ -278,7 +279,7 @@ int main() {
         //TODO la chiusura delle IPC avviene solo alla ricezione di un SIG_INT
 
         //invio conferma fine lavoro
-        rcvFromMsgQ->mtype = 1;
+        rcvFromMsgQ.mtype = 1;
         int sizeOfResult = sizeof(struct mymsg) - sizeof(long);
         if(msgsnd(msQId, &rcvFromMsgQ, sizeOfResult, 0) == -1)
             errExit("<Server> Non sono riuscito a inviare la conferma di lavoro concluso\n");
@@ -290,38 +291,38 @@ void fillTheBuffer(struct mymsg rcvFrom, struct myfile buffer[], int n_files, in
     int i = 0;
     while(i < n_files){
         if(buffer[i].pid == 0){
-            buffer[i].pid = rcvFrom.mtype;
-            buffer[i].pathname = rcvFrom.pathname;
+            buffer[i].pid = rcvFrom.pid;
+            strcpy(buffer[i].pathname, rcvFrom.pathname);
             switch (ipc) {
                 case 1:
-                    buffer[i].fifo1 = rcvFrom.portion;
+                    strcpy(buffer[i].fifo1, rcvFrom.portion);
                     break;
                 case 2:
-                    buffer[i].fifo2 = rcvFrom.portion;
+                    strcpy(buffer[i].fifo2, rcvFrom.portion);
                     break;
                 case 3:
-                    buffer[i].shMem = rcvFrom.portion;
+                    strcpy(buffer[i].msgQ, rcvFrom.portion);
                     break;
                 case 4:
-                    buffer[i].msgQ = rcvFrom.portion;
+                    strcpy(buffer[i].shMem, rcvFrom.portion);
                     break;
                 default:
                     break;
             }
             break;
-        }else if(buffer[i].pid == rcvFrom.mtype){
+        }else if(buffer[i].pid == rcvFrom.pid){
             switch (ipc) {
                 case 1:
-                    buffer[i].fifo1 = rcvFrom.portion;
+                    strcpy(buffer[i].fifo1, rcvFrom.portion);
                     break;
                 case 2:
-                    buffer[i].fifo2 = rcvFrom.portion;
+                    strcpy(buffer[i].fifo2, rcvFrom.portion);
                     break;
                 case 3:
-                    buffer[i].shMem = rcvFrom.portion;
+                    strcpy(buffer[i].msgQ, rcvFrom.portion);
                     break;
                 case 4:
-                    buffer[i].msgQ = rcvFrom.portion;
+                    strcpy(buffer[i].shMem, rcvFrom.portion);
                     break;
                 default:
                     break;
@@ -345,6 +346,7 @@ void serverSigHandler(int sig) {
         free_shared_memory(rcvFromShM);
         remove_shared_memory(shmId);
         msgctl(msQId, IPC_RMID, 0);
+        semctl(semIdForIPC, 0, IPC_RMID, 0);
         if(kill(getpid(), SIGTERM) == -1)
             errExit("<Server> Non sono riuscito a fare seppuku\n");
     }

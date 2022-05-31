@@ -6,17 +6,18 @@
 
 struct mymsg{
     long mtype; //lo usiamo per memorizzare il PID
-    char *portion;
-    char *pathname;
+    int pid;
+    char portion[1050];
+    char pathname[4096];
 };
 
 struct myfile{
-    long pid;
-    char *pathname;
-    char *fifo1;
-    char *fifo2;
-    char *msgQ;
-    char *shMem;
+    int pid;
+    char pathname[4096];
+    char fifo1[1050];
+    char fifo2[1050];
+    char msgQ[1050];
+    char shMem[1050];
 };
 
 int search(char files[100][256], char *currdir);

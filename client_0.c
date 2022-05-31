@@ -165,15 +165,15 @@ int main(int argc, char * argv[]) {
         fdFIFO1 = open(fifo1name, O_WRONLY);
         printf("<Client_0> Ho riaperto la fifo1 in scrittura\n");
         //definizione delle strutture che verranno usate per l'invio
-        struct mymsg *sendByFIFO1;
-        struct mymsg *sendByFIFO2;
-        struct mymsg *sendByShMemory;
+        struct mymsg sendByFIFO1;
+        struct mymsg sendByFIFO2;
+        struct mymsg sendByShMemory[50];
         struct mymsg sendByMsgQ;
-        struct mymsg *dummyShM; //servirà per la shared memory con i client figli
+        struct mymsg dummyShM; //servirà per la shared memory con i client figli
 
         //attach della shared memory
         printf("<Client_0> Sto per fare la prima attach\n");
-        sendByShMemory = (struct mymsg*) get_shared_memory(shmId, 0);
+        get_shared_memory(shmId, 0, sendByShMemory);
         /* variabili per scorrere lungo la shared memory
          * cursor è il puntatore al blocco attuale
          * maxCursor è la dimensione massima della shared memory
@@ -225,18 +225,23 @@ int main(int argc, char * argv[]) {
                 printf("Ciao! Sono il figlio numero %d e sto per iniziare a lavorare!\n", child+1);
                 int checkinvio[]={0,0,0,0};
                 struct stat fileStatistics;
-                char *buff = "";
+                char buff[4096];
+                int pid = getpid();
                 //salvataggio del pid del figlio
-                printf("<Client_%d> Sto inizializzando le strutture\n", getpid());
-                sendByFIFO1->mtype = getpid();
-                sendByFIFO2->mtype = getpid();
-                sendByMsgQ.mtype = getpid();
-                dummyShM->mtype = getpid();
+                fflush(stdout);
+                printf("<Client_%d> Sto inizializzando le strutture con il mio pid\n", pid);
+                fflush(stdout);
+                sendByFIFO1.pid = pid;
+                printf("Dopo il primo getpid\n");
+                sendByFIFO2.pid = pid;
+                sendByMsgQ.pid = pid;
+                dummyShM.pid = pid;
                 //salvataggio pathname del file
-                strcpy(sendByFIFO1->pathname, files[child]);
-                strcpy(sendByFIFO2->pathname, files[child]);
+                printf("<Client_%d> Sto inizializzando le strutture con il pathname assegnatomi: %s\n", getpid(), files[child]);
+                strcpy(sendByFIFO1.pathname, files[child]);
+                strcpy(sendByFIFO2.pathname, files[child]);
                 strcpy(sendByMsgQ.pathname, files[child]);
-                strcpy(sendByShMemory->pathname, files[child]);
+                strcpy(dummyShM.pathname, files[child]);
                 /* lasciamo così momentaneamente
                 sendByFIFO1->pathname = files[child];
                 sendByFIFO2->pathname = files[child];
@@ -249,7 +254,7 @@ int main(int argc, char * argv[]) {
                 stat(files[child], &fileStatistics); //prendo statistiche file
                 read(fd, buff, fileStatistics.st_size); //leggo il file
 
-                divideString(buff,sendByFIFO1->portion,sendByFIFO2->portion,sendByMsgQ.portion,dummyShM->portion); //dividiamo il file e lo salviamo nelle stringhe
+                divideString(buff,sendByFIFO1.portion,sendByFIFO2.portion,sendByMsgQ.portion,dummyShM.portion); //dividiamo il file e lo salviamo nelle stringhe
 
                 //blocco il figlio
                 semOp(semForChild, (unsigned short)0, -1); //TODO: Da verificare!
@@ -266,7 +271,7 @@ int main(int argc, char * argv[]) {
                         else if(semFIFO1value > 0){
                             semOp(semIdForIPC,1,-1);//mi prenoto il posto nell'IPC
                             semOp(mutex,1,1); //lascio accedere alla mutex al prossimo client
-                            if(write(fdFIFO1, sendByFIFO1, sizeof(sendByFIFO1)) == -1){
+                            if(write(fdFIFO1, &sendByFIFO1, sizeof(sendByFIFO1)) == -1){
                                 errExit("<Client_0> Non sono riuscito a scrivere nella FIFO1\n");
                             }
                             checkinvio[0]=1;
@@ -283,7 +288,7 @@ int main(int argc, char * argv[]) {
                         else if(semFIFO2value > 0){
                             semOp(semIdForIPC,2,-1);
                             semOp(mutex,2,1);
-                            if(write(fdFIFO2, sendByFIFO2, sizeof(sendByFIFO2)) == -1){
+                            if(write(fdFIFO2, &sendByFIFO2, sizeof(sendByFIFO2)) == -1){
                                 errExit("<Client_0> Non sono riuscito a scrivere nella FIFO2\n");
                             }
                             checkinvio[1]=1;
@@ -302,9 +307,9 @@ int main(int argc, char * argv[]) {
                             semOp(mutex, 3, 1);
                             semOp(mutex, 5, -1);
 
-                            sendByShMemory[cursor].mtype = dummyShM->mtype;//copio il pid di dummy nella shared memory
-                            sendByShMemory[cursor].pathname = dummyShM->pathname; //TODO forse occorre strcpy
-                            sendByShMemory[cursor].portion = dummyShM->portion;
+                            sendByShMemory[cursor].pid = dummyShM.pid;//copio il pid di dummy nella shared memory
+                            strcpy(sendByShMemory[cursor].pathname, dummyShM.pathname);
+                            strcpy(sendByShMemory[cursor].portion, dummyShM.portion);
                             cursor++;
 
                             if (cursor == maxCursor)
