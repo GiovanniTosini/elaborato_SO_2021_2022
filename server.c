@@ -40,7 +40,7 @@ int msQId;
 struct mymsg *rcvFromFifo1, *rcvFromFifo2, *rcvFromShM, *rcvFromMsgQ;
 char *fifo1name = "/tmp/myfifo1";
 char *fifo2name = "/tmp/myfifo2";
-char *fifoDummy = "/tmp/myfifodummy";
+//char *fifoDummy = "/tmp/myfifodummy"; momentaneamente sfrattata
 
 void fillTheBuffer(struct mymsg rcvFrom, struct myfile buffer[], int n_files, int ipc);
 void serverSigHandler(int sig);
@@ -81,7 +81,7 @@ int main() {
     union semun argIPC;
     argIPC.array = values;
 
-    if(semctl(semIdForIPC,0,SETALL,argIPC)==-1){
+    if(semctl(semIdForIPC,0,SETALL,argIPC) == -1){
         errExit("<Server> Non sono riuscito a settare i semafori delle IPC\n");
     }
     printf("<Server> Ho settato il set dei semafori per le IPC\n");
@@ -106,48 +106,36 @@ int main() {
         printf("<Server> ricevuti %d file con cui lavorare\n", n_files);
         int counterForMsgQ = n_files;
 
-        //TODO TEST
+        //chiusura momentanea per poi riaprirla in scrittura per inviare ID di shm, msgq e semIdForIPC
         close(fdfifo1);
+        sleep(5); //dovrebbe evitare che server si blocchi in apertura della fifo
         fdfifo1 = open(fifo1name,O_WRONLY);
-        //TODO TEST
+        printf("<Server> Ho aperto la fifo1 in scrittura\n");
 
-        //apro la FIFO e invio l'ID della shared memory e della msg queue
-        //TODO TEST
-        /*
-        if(mkfifo(fifoDummy, S_IRUSR|S_IWUSR) == -1)
-            errExit("<Server> Non sono riuscito a creare la fifo dummy\n");
-        printf("<Server> Ho creato la fifo dummy\n");
-        printf("<Server> Apro la fifo dummy\n");
-        int fdDummy;
-        if((fdDummy = open(fifoDummy, O_WRONLY)) == -1)
-            errExit("<Server> Non sono riuscito ad aprire la fifo dummy\n");
-        */
-        printf("<Server> Ho aperto fifo dummy\n");
-        printf("<Server> Invio ID della shared memory a Client_0");
+        printf("<Server> Invio ID della shared memory a Client_0\n");
         write(fdfifo1, &shmId, sizeof(int));
-        printf("<Server> Invio ID della message queue a Client_0");
+        printf("<Server> Invio ID della message queue a Client_0\n");
         write(fdfifo1, &msQId, sizeof(int));
-        printf("<Server> Invio ID del set di semafori a Client_0");
+        printf("<Server> Invio ID del set di semafori a Client_0\n");
         write(fdfifo1,&semIdForIPC,sizeof(int));
 
-        //TODO TEST
-        /*
-        if(close(fdDummy) == -1)
-            errExit("<Server> Ho chiuso la fifo dummy\n");
-        if(unlink(fifoDummy) == -1)
-            errExit("<Server> Ho fatto l'unlink di fifo dummy\n");
-        */
-        //TODO TEST
+        if(close(fdfifo1) == -1)
+            errExit("<Server> Non sono riuscito a chiudere la fifo dummy\n");
+
+        fdfifo1 = open(fifo1name, O_RDONLY);
+        printf("<Server> Ho riaperto la fifo1 in sola lettura\n");
+
         //attach shmemory (il prof lo dichiara void e con dimensione NULL ES.5 N.4)
         //PROBLEMA: è possibile tenere le flag per read/write, solo read ma non solo write...
         rcvFromShM = (struct mymsg*) get_shared_memory(shmId, 0);
 
         //invio conferma su shmemory
         rcvFromShM[0].mtype = 1;
-        printf("<Server> invio conferma ricezione numero file a Client_0");
+        printf("<Server> Inviata conferma ricezione numero file a Client_0\n");
 
         struct myfile buffer[n_files]; //POTREBBE ROMPERE LE PALLE PER QUESTO CHE VIENE DICHIARATO DINAMICAMENTE
         //inizializzo l'array con pid a 0
+        printf("<Server> Inizializzo la struttura buffer\n");
         for(int i = 0; i < n_files; i++){
             buffer[i].pid = 0;
             buffer[i].fifo1 = NULL;
@@ -164,6 +152,7 @@ int main() {
         int sizeOfMessage = sizeof(struct mymsg) - sizeof(long);
 
         //INIZIO RICEZIONE
+        printf("<Server> Inizio ricezione dei file\n");
         while(closedIPC[0] == 0 || closedIPC[1] == 0 || closedIPC[2] == 0 || closedIPC[3] == 0){
             /* da man 7 pipe, se si prova a leggere da una FIFO che non ha più processi
              * in scrittura la read tornerà 0
@@ -223,7 +212,7 @@ int main() {
                 //lettura message queue TODO mettere un contatore di volte in cui si è trovata la msgQ vuota, arrivato a quello si esce dal ciclo delle letture?
                 if(msgrcv(msQId, rcvFromMsgQ, sizeOfMessage, 0, IPC_NOWAIT) == -1) {
                     if (errno == ENOMSG)
-                        printf("<Server> Message Queue vuota, proseguo oltre");
+                        printf("<Server> Message Queue vuota, proseguo oltre\n");
                     else
                         errExit("<Server> Non sono riuscito a ricevere un messaggio dalla message queue\n");
                 }
@@ -346,7 +335,7 @@ void fillTheBuffer(struct mymsg rcvFrom, struct myfile buffer[], int n_files, in
 void serverSigHandler(int sig) {
     if(sig == SIGINT){
         printf("<Server> Terminazione del processo Client_0.\n");
-        if(kill(pidClient_0, SIGTERM) == -1){
+        if(kill(pidClient_0, SIGKILL) == -1){
             errExit("<Server> Ops, il Client_0 è sopravvissuto\n");
         }
         close(fdfifo1);

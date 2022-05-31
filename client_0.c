@@ -31,7 +31,7 @@ char files[N_FILES][MAX_PATH]; //array contenente tutti i pathname
 int n_files = 0; //TODO perché è qui? non serve
 char *fifo1name = "/tmp/myfifo1";
 char *fifo2name ="/tmp/myfifo2";
-char *fifoDummy = "/tmp/myfifodummy";
+//char *fifoDummy = "/tmp/myfifodummy";
 
 void sigHandler(int sig) {
     if(sig == SIGUSR1){
@@ -136,26 +136,19 @@ int main(int argc, char * argv[]) {
         //invio del numero di files al server
         write(fdFIFO1, &n_files, sizeof(int));
 
-        //TODO TEST
+        //chiusura momentanea per ricezione ID IPC
         close(fdFIFO1);
+        printf("<Client_0> Ho chiuso la fifo1 in scrittura\n");
         fdFIFO1 = open(fifo1name,O_RDONLY);
-        //TODO TEST
+        printf("<Client_0> Ho aperto la fifo1 in lettura\n");
 
-        //server crea una fifo ad hoc per inviare l'id del segmento di memoria da cui successivamente
-        //il client otterrà l'ok dal server
-        //TODO TEST
-        /*
-        int fdDummy = open(fifoDummy, O_RDONLY);
-        printf("<Client_0> Ho aperto la fifo dummy\n");
-        //TODO TEST
-         */
         int shmId;
         printf("<Client_0> Sto per ricevere l'ID della shared memory\n");
         read(fdFIFO1, &shmId, sizeof(shmId));
         printf("smhid: %d\n", shmId);
 
         //stessa roba con msgQ
-        int msgQId; //sarebbe la msgQ TODO
+        int msgQId; //sarebbe la msgQ
         printf("<Client_0> Sto per ricevere l'ID della message queue\n");
         read(fdFIFO1, &msgQId, sizeof(msgQId));
         printf("msgqid: %d\n", msgQId);
@@ -164,9 +157,13 @@ int main(int argc, char * argv[]) {
         int semIdForIPC;
         read(fdFIFO1, &semIdForIPC, sizeof(semIdForIPC));
         if(close(fdFIFO1) == -1)
-            errExit("<Client_0> Non son riuscito a chiudere la fifo dummy\n");
+            errExit("<Client_0> Non son riuscito a chiudere la fifo1 in lettura\n");
 
-        printf("<Client_0> Ho chiuso la fifo dummy\n");
+        printf("<Client_0> Ho chiuso la fifo1 in lettura\n");
+        printf("<Client_0> Riapro la fifo1 in scrittura\n");
+        sleep(5); //facciamo attendere 10 secondi per sicurezza
+        fdFIFO1 = open(fifo1name, O_WRONLY);
+        printf("<Client_0> Ho riaperto la fifo1 in scrittura\n");
         //definizione delle strutture che verranno usate per l'invio
         struct mymsg *sendByFIFO1;
         struct mymsg *sendByFIFO2;
@@ -175,7 +172,7 @@ int main(int argc, char * argv[]) {
         struct mymsg *dummyShM; //servirà per la shared memory con i client figli
 
         //attach della shared memory
-        printf("Sto per fare la prima attach");
+        printf("<Client_0> Sto per fare la prima attach\n");
         sendByShMemory = (struct mymsg*) get_shared_memory(shmId, 0);
         /* variabili per scorrere lungo la shared memory
          * cursor è il puntatore al blocco attuale
@@ -185,7 +182,7 @@ int main(int argc, char * argv[]) {
 
         //attende di ricevere messaggio conferma ricezione numero file tramite shared memory
         while(sendByShMemory[0].mtype != 1); //rimane bloccato fintanto che non riceve conferma
-        printf("<Client_0> ricevuta conferma dal server");
+        printf("<Client_0> ricevuta conferma ricezione numero file dal server\n");
 
         //creazione del semaforo per partenza sincrona dei figli
         int semForChild = semget(IPC_PRIVATE, 1, S_IRUSR | S_IWUSR);
@@ -193,16 +190,19 @@ int main(int argc, char * argv[]) {
             errExit("<Client_0> Non sono riuscito a creare il set di semafori\n");
 
         //inizializzazione del semaforo
+        unsigned short monoArray[1];
         union semun argSemForChild;
-        argSemForChild.val = n_files; //set del valore iniziale
+        argSemForChild.array = monoArray; //set del valore iniziale
+        printf("<Client_0> Sto per settare il semaforo di attesa collettiva dei figli\n");
         if(semctl(semForChild, 0, SETALL, argSemForChild) == -1){
             errExit("<Client_0> Non sono riuscito a settare i semafori per l'attesa collettiva dei figli\n");
         }
 
-        //riempio la shared memory di mtype = 0 per agevolare lettura da server
+        //inizializzo la shared memory di mtype = 0 per agevolare lettura da server
         for(int i = 0; i < 50; i++){
             sendByShMemory[i].mtype = 0;
         }
+        printf("<Client_0> Ho inizializzato la shared memory\n");
 
         //mutex per accesso al valore del semaforo per la singola IPC e gestione del cursore della shared memory
         int mutex = semget(IPC_PRIVATE,5,IPC_CREAT|S_IRUSR|S_IWUSR);
@@ -212,7 +212,7 @@ int main(int argc, char * argv[]) {
 
         if(semctl(mutex, 0, SETALL, argMutex) == -1)
             errExit("<Client_0> Non sono riuscito a settare il semaforo mutex\n");
-
+        printf("<Client_0> Ho generato e settato il semaforo mutex\n");
 
         //generazione figli
         pid_t pid;
@@ -222,20 +222,29 @@ int main(int argc, char * argv[]) {
                 errExit("<Client_0> Non sono riuscito a fare la fork\n");
             else if(pid == 0){
                 //array di supporto per il singolo figlio per verificare se ha già inviato tramite una IPC
+                printf("Ciao! Sono il figlio numero %d e sto per iniziare a lavorare!\n", child+1);
                 int checkinvio[]={0,0,0,0};
                 struct stat fileStatistics;
                 char *buff = "";
                 //salvataggio del pid del figlio
+                printf("<Client_%d> Sto inizializzando le strutture\n", getpid());
                 sendByFIFO1->mtype = getpid();
                 sendByFIFO2->mtype = getpid();
                 sendByMsgQ.mtype = getpid();
                 dummyShM->mtype = getpid();
                 //salvataggio pathname del file
+                strcpy(sendByFIFO1->pathname, files[child]);
+                strcpy(sendByFIFO2->pathname, files[child]);
+                strcpy(sendByMsgQ.pathname, files[child]);
+                strcpy(sendByShMemory->pathname, files[child]);
+                /* lasciamo così momentaneamente
                 sendByFIFO1->pathname = files[child];
                 sendByFIFO2->pathname = files[child];
                 sendByMsgQ.pathname = files[child];
                 dummyShM->pathname = files[child];
+                */
 
+                printf("<Client_%d> Sto per aprire il file %s\n", child, files[child]);
                 int fd = open(files[child], O_RDONLY, S_IRUSR); //apertura child-esimo file
                 stat(files[child], &fileStatistics); //prendo statistiche file
                 read(fd, buff, fileStatistics.st_size); //leggo il file
