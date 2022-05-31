@@ -17,12 +17,16 @@ int alloc_shared_memory(key_t shmKey, size_t size) {
     return shmid;
 }
 
-void get_shared_memory(int shmid, int shmflg, void *ptr_sh) {
+void *get_shared_memory(int shmid, int shmflg) {
     // attach the shared memory
+    void *ptr_sh = shmat(shmid, NULL, shmflg);
     ptr_sh = shmat(shmid, NULL, shmflg);
     if (ptr_sh == (void *)-1)
         errExit("shmat failed");
+
+    return ptr_sh;
 }
+
 
 void free_shared_memory(void *ptr_sh) {
     // detach the shared memory segments

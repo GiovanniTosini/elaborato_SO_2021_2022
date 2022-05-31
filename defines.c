@@ -77,8 +77,8 @@ void divideString(char buff[],char sendByFIFO1[],char sendByFIFO2[],char sendByM
         memcpy(subBuffer[i],&buff[offset],step);
         offset += step;
     }
-    strcpy(sendByFIFO1, &subBuffer[0]);
-    strcpy(sendByFIFO2, &subBuffer[1]);
-    strcpy(sendByMsgQ, &subBuffer[2]);
-    strcpy(sendByShM, &subBuffer[3]);
+    strcpy(sendByFIFO1, subBuffer[0]);
+    strcpy(sendByFIFO2, subBuffer[1]);
+    strcpy(sendByMsgQ, subBuffer[2]);
+    strcpy(sendByShM, subBuffer[3]);
 }

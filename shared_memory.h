@@ -24,7 +24,7 @@ int alloc_shared_memory(key_t shmKey, size_t size); //TODO forse vuole una 's' i
 // of the calling process.
 // It returns a pointer to the attached shared memory segment,
 // otherwise it terminates the calling process
-void get_shared_memory(int shmid, int shmflg, void *ptr_sh);
+void *get_shared_memory(int shmid, int shmflg);
 
 // The free_shared_memory detaches a shared memory segment from the logic
 // address space of the calling process.

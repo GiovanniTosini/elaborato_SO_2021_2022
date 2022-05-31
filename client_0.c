@@ -167,13 +167,13 @@ int main(int argc, char * argv[]) {
         //definizione delle strutture che verranno usate per l'invio
         struct mymsg sendByFIFO1;
         struct mymsg sendByFIFO2;
-        struct mymsg sendByShMemory[50];
+        struct mymsg *sendByShMemory;
         struct mymsg sendByMsgQ;
         struct mymsg dummyShM; //servirà per la shared memory con i client figli
 
         //attach della shared memory
         printf("<Client_0> Sto per fare la prima attach\n");
-        get_shared_memory(shmId, 0, sendByShMemory);
+        sendByShMemory=(struct mymsg*) get_shared_memory(shmId, 0);
         /* variabili per scorrere lungo la shared memory
          * cursor è il puntatore al blocco attuale
          * maxCursor è la dimensione massima della shared memory
@@ -225,19 +225,18 @@ int main(int argc, char * argv[]) {
                 printf("Ciao! Sono il figlio numero %d e sto per iniziare a lavorare!\n", child+1);
                 int checkinvio[]={0,0,0,0};
                 struct stat fileStatistics;
-                char buff[4096];
+                char buff[4100];
                 int pid = getpid();
                 //salvataggio del pid del figlio
                 fflush(stdout);
                 printf("<Client_%d> Sto inizializzando le strutture con il mio pid\n", pid);
                 fflush(stdout);
                 sendByFIFO1.pid = pid;
-                printf("Dopo il primo getpid\n");
                 sendByFIFO2.pid = pid;
                 sendByMsgQ.pid = pid;
                 dummyShM.pid = pid;
                 //salvataggio pathname del file
-                printf("<Client_%d> Sto inizializzando le strutture con il pathname assegnatomi: %s\n", getpid(), files[child]);
+                printf("<Client_%d> Sto inizializzando le strutture con il pathname assegnatomi: %s\n", pid, files[child]);
                 strcpy(sendByFIFO1.pathname, files[child]);
                 strcpy(sendByFIFO2.pathname, files[child]);
                 strcpy(sendByMsgQ.pathname, files[child]);
@@ -249,19 +248,25 @@ int main(int argc, char * argv[]) {
                 dummyShM->pathname = files[child];
                 */
 
-                printf("<Client_%d> Sto per aprire il file %s\n", child, files[child]);
+                printf("<Client_%d> Sto per aprire il file %s\n", pid, files[child]);
                 int fd = open(files[child], O_RDONLY, S_IRUSR); //apertura child-esimo file
+
+                if(fd==-1)
+                    errExit("<Client_figlio> Errore client open");
+                printf("<Client_%d> Ho aperto il file!\n", pid);
                 stat(files[child], &fileStatistics); //prendo statistiche file
                 read(fd, buff, fileStatistics.st_size); //leggo il file
-
+                printf("<Client_%d> Sto per dividere il file\n", pid);
                 divideString(buff,sendByFIFO1.portion,sendByFIFO2.portion,sendByMsgQ.portion,dummyShM.portion); //dividiamo il file e lo salviamo nelle stringhe
-
+                printf("<Client_%d> Ho diviso il file!\n", pid);
                 //blocco il figlio
                 semOp(semForChild, (unsigned short)0, -1); //TODO: Da verificare!
                 semOp(semForChild, (unsigned short)0, 0); //Rimane fermo fin quando tutti non sono 0.
                 //iniziano inviare
+
                 do{
                     //INIZIO INVIO
+                    printf("<Client_%d> Sto per iniziare ad inviare\n", pid);
                     //scrittura in FIFO1
                     if(checkinvio[0]!=1){
                         semOp(mutex,1,-1);
@@ -307,7 +312,8 @@ int main(int argc, char * argv[]) {
                             semOp(mutex, 3, 1);
                             semOp(mutex, 5, -1);
 
-                            sendByShMemory[cursor].pid = dummyShM.pid;//copio il pid di dummy nella shared memory
+                            memcpy(&sendByShMemory[cursor].pid,&dummyShM.pid, sizeof(int));
+                            //sendByShMemory[cursor].pid = dummyShM.pid;//copio il pid di dummy nella shared memory
                             strcpy(sendByShMemory[cursor].pathname, dummyShM.pathname);
                             strcpy(sendByShMemory[cursor].portion, dummyShM.portion);
                             cursor++;
@@ -342,38 +348,36 @@ int main(int argc, char * argv[]) {
                 kill(getpid(),SIGTERM);
                 
             }
-            else{
-                /*Client_0 si mette in attesa di conferma fine lavoro da
-                 * server la conferma sarà un 1 in mtype
-                 */
-                struct mymsg result;
-                int flag = 1, sizeOfResult = sizeof(result) - sizeof(long);
-                while(flag){
-                    if(msgrcv(msgQId, &result, sizeOfResult, 1, 0) != -1)
-                        flag = 0;
-                }
-
-                //rimozione dei semafori semForChild e mutex
-                if(semctl(semForChild, 0, IPC_RMID, 0) == -1)
-                    errExit("<Client_0> Non sono riuscito a eliminare il semaforo semForChild\n");
-                if(semctl(mutex, 0, IPC_RMID, 0) == -1)
-                    errExit("<Client_0> Non sono riuscito a eliminare il semaforo mutex\n");
-
-                //riempio la signalSet con tutti i segnali
-                if(sigfillset(&signalSet) == -1){
-                    errExit("\"<Client_0> Non sono riuscito a riempire il set di segnali\\n\"");
-                }
-                //aggiunta dei segnali SIGINT e SIGUSR1 alla maschera
-                if(sigdelset(&signalSet, SIGINT | SIGUSR1) == -1){
-                    errExit("\"<Client_0> Non sono riuscito a togliere SIGINT e SIGUSR1 dal set di segnali\\n\"");
-                }
-                if(sigprocmask(SIG_SETMASK, &signalSet, NULL) == -1){
-                    errExit("<Client_0> Non sono riuscito a settare la maschera dei segnali\n");
-                }
-                break;
-            }
 
         }
+        /*Client_0 si mette in attesa di conferma fine lavoro da
+                 * server la conferma sarà un 1 in mtype
+                 */
+        struct mymsg result;
+        int flag = 1, sizeOfResult = sizeof(result) - sizeof(long);
+        while(flag){
+            if(msgrcv(msgQId, &result, sizeOfResult, 1, 0) != -1)
+                flag = 0;
+        }
+
+        //rimozione dei semafori semForChild e mutex
+        if(semctl(semForChild, 0, IPC_RMID, 0) == -1)
+            errExit("<Client_0> Non sono riuscito a eliminare il semaforo semForChild\n");
+        if(semctl(mutex, 0, IPC_RMID, 0) == -1)
+            errExit("<Client_0> Non sono riuscito a eliminare il semaforo mutex\n");
+
+        //riempio la signalSet con tutti i segnali
+        if(sigfillset(&signalSet) == -1){
+            errExit("\"<Client_0> Non sono riuscito a riempire il set di segnali\\n\"");
+        }
+        //aggiunta dei segnali SIGINT e SIGUSR1 alla maschera
+        if(sigdelset(&signalSet, SIGINT | SIGUSR1) == -1){
+            errExit("\"<Client_0> Non sono riuscito a togliere SIGINT e SIGUSR1 dal set di segnali\\n\"");
+        }
+        if(sigprocmask(SIG_SETMASK, &signalSet, NULL) == -1){
+            errExit("<Client_0> Non sono riuscito a settare la maschera dei segnali\n");
+        }
+
     }
 
     return 0;

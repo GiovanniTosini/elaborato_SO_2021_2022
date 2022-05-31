@@ -38,7 +38,7 @@ int fdfifo2;
 int shmId;
 int msQId;
 int semIdForIPC;
-struct mymsg rcvFromFifo1, rcvFromFifo2, rcvFromShM[50], rcvFromMsgQ;
+struct mymsg rcvFromFifo1, rcvFromFifo2, *rcvFromShM, rcvFromMsgQ;
 char *fifo1name = "/tmp/myfifo1";
 char *fifo2name = "/tmp/myfifo2";
 //char *fifoDummy = "/tmp/myfifodummy"; momentaneamente sfrattata
@@ -128,7 +128,7 @@ int main() {
 
         //attach shmemory (il prof lo dichiara void e con dimensione NULL ES.5 N.4)
         //PROBLEMA: è possibile tenere le flag per read/write, solo read ma non solo write...
-        get_shared_memory(shmId, 0, rcvFromShM);
+        rcvFromShM=(struct mymsg*) get_shared_memory(shmId, 0);
 
         //invio conferma su shmemory
         rcvFromShM[0].mtype = 1;
