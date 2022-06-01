@@ -76,7 +76,7 @@ int main() {
     /* FIFO1=1
      * FIFO2=2
      * MSGQueue=3
-     * SHdMem=
+     * SHdMem=4
      */
     unsigned short values[]={50,50,50,50};
     union semun argIPC;
@@ -156,17 +156,19 @@ int main() {
              */
             //leggo dalla fifo1 TODO se non trova da leggere si blocca
             if(closedIPC[0] == 0){
-                printf("<Server Verifico la fifo1\n");
+                printf("<Server> Verifico la fifo1\n");
                 leggi = read(fdfifo1, &rcvFromFifo1,sizeof(rcvFromFifo1));
                 if(leggi == -1) {
                     errExit("<Server> Non sono riuscito a leggere dalla FIFO1\n");
                 }
+
                 else if(leggi == 0){ //tutti i client hanno scritto ed è stato letto tutto chiusura FIFO
                     closedIPC[0] = 1;
                 }
                 else {
                     fillTheBuffer(rcvFromFifo1, buffer, n_files, 1);
                     semOp(semIdForIPC,1,1);
+                    printf("<Server> Ho recuperato fifo1");
                 }
             }
 
@@ -194,7 +196,7 @@ int main() {
              */
             if(closedIPC[2] == 0){
                 printf("<Server Verifico la shared memory\n");
-                if(rcvFromShM[cursor].mtype == 1){
+                if(rcvFromShM[cursor].mtype == 1){ //TODO l'mtype da sistemare
                     closedIPC[2] = 1;
                 }
                 else if(rcvFromShM[cursor].mtype == 0){
@@ -237,7 +239,7 @@ int main() {
             char pidToStr[8];
             sprintf(pidToStr, "%d", buffer[i].pid);
             //ottengo il pathname completo del file di out (quello con _out) alla fine
-            char *newName = strcat(buffer[i].pathname, "_out");
+            char *newName = strcat(buffer[i].pathname, "_out"); //TODO da convertire in array
             int fdNewFile = open(newName, O_WRONLY | O_APPEND | O_CREAT, S_IWUSR | S_IRUSR);
             if(fdNewFile == -1)
                 errExit("<Server> Non sono riuscito a creare un nuovo file\n");

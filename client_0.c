@@ -191,12 +191,16 @@ int main(int argc, char * argv[]) {
 
         //inizializzazione del semaforo
         unsigned short monoArray[1];
+        monoArray[0]=n_files;
         union semun argSemForChild;
         argSemForChild.array = monoArray; //set del valore iniziale
         printf("<Client_0> Sto per settare il semaforo di attesa collettiva dei figli\n");
         if(semctl(semForChild, 0, SETALL, argSemForChild) == -1){
             errExit("<Client_0> Non sono riuscito a settare i semafori per l'attesa collettiva dei figli\n");
         }
+        if(semctl(semForChild,0,GETALL,argSemForChild)==-1)
+            errExit("Errore client_0");
+        printf("valore semforchild: %d",argSemForChild.array[0]);
 
         //inizializzo la shared memory di mtype = 0 per agevolare lettura da server
         for(int i = 0; i < 50; i++){
@@ -260,9 +264,11 @@ int main(int argc, char * argv[]) {
                 divideString(buff,sendByFIFO1.portion,sendByFIFO2.portion,sendByMsgQ.portion,dummyShM.portion); //dividiamo il file e lo salviamo nelle stringhe
                 printf("<Client_%d> Ho diviso il file!\n", pid);
                 //blocco il figlio
+                printf("sto per semaforo");
                 semOp(semForChild, (unsigned short)0, -1); //TODO: Da verificare!
                 semOp(semForChild, (unsigned short)0, 0); //Rimane fermo fin quando tutti non sono 0.
                 //iniziano inviare
+                printf("post semaforo");
 
                 do{
                     //INIZIO INVIO
@@ -276,9 +282,11 @@ int main(int argc, char * argv[]) {
                         else if(semFIFO1value > 0){
                             semOp(semIdForIPC,1,-1);//mi prenoto il posto nell'IPC
                             semOp(mutex,1,1); //lascio accedere alla mutex al prossimo client
+                            printf("<Client_%d> Sto per fare l'invio...\n",pid);
                             if(write(fdFIFO1, &sendByFIFO1, sizeof(sendByFIFO1)) == -1){
                                 errExit("<Client_0> Non sono riuscito a scrivere nella FIFO1\n");
                             }
+                            printf("<Client_%d> ho fatto l'invio\n",pid);
                             checkinvio[0]=1;
                             close(fdFIFO1);
                         }
