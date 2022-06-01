@@ -11,14 +11,13 @@
 
 //scorre i file, verifica che siano validi e li salva in "*files"
 //TODO i file devono essere .txt
-int search(char files[100][256], char *currdir){
+int search(char files[100][256], char currdir[], int n_files){
 
-    int n_files = 0;
     struct dirent *dentry;
     struct stat sb; //struttura di supporto per verificare la dimensione del singolo file
     DIR *dirp = opendir(currdir);
-    strcat(currdir, "/");
-    char dummy [256];
+    //strcat(currdir, "/");
+    char dummy [256] = "";
     strcpy(dummy, currdir);
 
     /* skippa le cartelle '.' e '..'
@@ -32,22 +31,22 @@ int search(char files[100][256], char *currdir){
         }
         //se è un file ed inizia con 'sendme_' otteniamo il suo path e lo carichiamo in memoria
         if((dentry->d_type == DT_REG) && (strncmp(dentry->d_name, "sendme_", strlen("sendme_")) == 0)){
-            char pathname[256]; //pathname attuale
-            strcat(dummy, dentry->d_name); //FORSE BISOGNA METTERE '/' DOPO IL PATH DELLA CARTELLA
+            char pathname[256] = ""; //pathname attuale
             strcpy(pathname, dummy);
+            strcat(pathname, dentry->d_name);
             stat(pathname, &sb); //ottengo info file
             if(sb.st_size <= 4096){ //TODO: oppure 4000
                 //il file è minore uguale a 4KB, bisogna SISTEMARE
                 strcpy(files[n_files], pathname);
                 n_files++;
             }
-            strcpy(dummy, currdir);
+            //strcpy(dummy, currdir);
         }else if(dentry->d_type == DT_DIR){
 
             strcat(dummy, dentry->d_name);
-            char dir[256];
+            char dir[256] = "";
             strcpy(dir, dummy);
-            n_files += search(files, dir);
+            n_files = search(files, dir, n_files);
         }
     }
     return n_files;

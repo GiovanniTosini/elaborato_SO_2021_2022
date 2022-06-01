@@ -20,6 +20,6 @@ struct myfile{
     char shMem[1050];
 };
 
-int search(char files[100][256], char *currdir);
+int search(char files[100][256], char currdir[], int n_files);
 int divideBy4(int counter);
 void divideString(char buff[],char sendByFIFO1[],char sendByFIFO2[],char sendByMsgQ[],char sendByShM[]);

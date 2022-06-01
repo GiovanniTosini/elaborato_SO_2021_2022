@@ -99,7 +99,11 @@ int main(int argc, char * argv[]) {
 
         //aperture FIFO + invio PID Client_0
         int fdFIFO1 = open(fifo1name, O_WRONLY);
+        if(fdFIFO1 == -1)
+            errExit("<Client_0> Errore con apertura fifo1\n");
         int fdFIFO2 = open(fifo2name,O_WRONLY);
+        if(fdFIFO2 == -1)
+            errExit("<Client_0> Errore con apertura fifo2\n");
         printf("<Client_0> Ho aperto FIFO1 e FIFO2\n");
         pid_t pidclient = getpid();
         write(fdFIFO1, &pidclient, sizeof(pid_t));
@@ -130,7 +134,7 @@ int main(int argc, char * argv[]) {
         printf("<Client_0> Ciao %s, ora inizio l’invio dei file contenuti in %s\n", getenv("USER"), currdir);
 
         printf("<Client_0> Inizio a cercare\n");
-        n_files = search(files, currdir); //TODO n_files non viene aggiornato
+        n_files = search(files, currdir, 0); //TODO n_files non viene aggiornato
         printf("<Client_0> Ho finito, ho trovato %d files\n", n_files);
 
         //invio del numero di files al server
@@ -234,7 +238,6 @@ int main(int argc, char * argv[]) {
                 //salvataggio del pid del figlio
                 fflush(stdout);
                 printf("<Client_%d> Sto inizializzando le strutture con il mio pid\n", pid);
-                fflush(stdout);
                 sendByFIFO1.pid = pid;
                 sendByFIFO2.pid = pid;
                 sendByMsgQ.pid = pid;
@@ -254,7 +257,6 @@ int main(int argc, char * argv[]) {
 
                 printf("<Client_%d> Sto per aprire il file %s\n", pid, files[child]);
                 int fd = open(files[child], O_RDONLY, S_IRUSR); //apertura child-esimo file
-
                 if(fd==-1)
                     errExit("<Client_figlio> Errore client open");
                 printf("<Client_%d> Ho aperto il file!\n", pid);
@@ -276,10 +278,12 @@ int main(int argc, char * argv[]) {
                     //scrittura in FIFO1
                     if(checkinvio[0]!=1){
                         semOp(mutex,1,-1);
+                        printf("<Client_%d> Sto per verificare il valore del semaforo della fifo1\n", pid);
                         int semFIFO1value = semctl(semIdForIPC, 1, GETVAL, 0); //recupero il valore del semaforo per verificare se l'IPC è piena o no
                         if(semFIFO1value == -1)
                             errExit("<Client_0> Non sono riuscito a recuperare il valore del semaforo della FIFO1\n");
                         else if(semFIFO1value > 0){
+                            printf("<Client_%d> Ok sto per entrare nella coda\n", pid);
                             semOp(semIdForIPC,1,-1);//mi prenoto il posto nell'IPC
                             semOp(mutex,1,1); //lascio accedere alla mutex al prossimo client
                             printf("<Client_%d> Sto per fare l'invio...\n",pid);
