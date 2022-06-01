@@ -167,7 +167,7 @@ int main() {
                 }
                 else {
                     fillTheBuffer(rcvFromFifo1, buffer, n_files, 1);
-                    semOp(semIdForIPC,1,1);
+                    semOp(semIdForIPC,0,1);
                     printf("<Server> Ho recuperato fifo1");
                 }
             }
@@ -184,7 +184,7 @@ int main() {
                 }
                 else {
                     fillTheBuffer(rcvFromFifo2, buffer, n_files, 2);
-                    semOp(semIdForIPC, 2, 1);
+                    semOp(semIdForIPC, 1, 1);
                 }
             }
             //lettura shared Memory
@@ -206,7 +206,7 @@ int main() {
                     if(cursor == 50){
                         cursor = 0;
                     }
-                    semOp(semIdForIPC, 3, 1);
+                    semOp(semIdForIPC, 2, 1);
                 }
             }
 
@@ -221,7 +221,7 @@ int main() {
                 }
                 else {
                     fillTheBuffer(rcvFromMsgQ, buffer, n_files, 4);
-                    semOp(msQId, 4, 1);
+                    semOp(msQId, 3, 1);
                     counterForMsgQ--;
                     if(counterForMsgQ == 0)
                         closedIPC[3] = 1;
