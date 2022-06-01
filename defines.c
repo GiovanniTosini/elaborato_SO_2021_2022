@@ -16,7 +16,6 @@ int search(char files[100][256], char currdir[], int n_files){
     struct dirent *dentry;
     struct stat sb; //struttura di supporto per verificare la dimensione del singolo file
     DIR *dirp = opendir(currdir);
-    //strcat(currdir, "/");
     char dummy [256] = "";
     strcpy(dummy, currdir);
 
@@ -43,10 +42,11 @@ int search(char files[100][256], char currdir[], int n_files){
             //strcpy(dummy, currdir);
         }else if(dentry->d_type == DT_DIR){
 
-            strcat(dummy, dentry->d_name);
-            char dir[256] = "";
-            strcpy(dir, dummy);
-            n_files = search(files, dir, n_files);
+            char pathWithDir[256] = "";
+            strcpy(pathWithDir, dummy);
+            strcat(pathWithDir, dentry->d_name);
+            strcat(pathWithDir, "/");
+            n_files = search(files, pathWithDir, n_files);
         }
     }
     return n_files;
