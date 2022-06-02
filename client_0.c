@@ -155,7 +155,7 @@ int main(int argc, char * argv[]) {
         //stessa roba con msgQ
         int msgQId; //sarebbe la msgQ
         printf("<Client_0> Sto per ricevere l'ID della message queue\n");
-        read(fdFIFO1, &msgQId, sizeof(msgQId));
+        read(fdFIFO1, &msgQId, sizeof(int));
         printf("msgqid: %d\n", msgQId);
 
         //lettura ID dei semafori generati dal server
@@ -243,6 +243,8 @@ int main(int argc, char * argv[]) {
                 sendByFIFO2.pid = pid;
                 sendByMsgQ.pid = pid;
                 dummyShM.pid = pid;
+                //inizializzo mtype
+                sendByMsgQ.mtype = 2;
                 //salvataggio pathname del file
                 printf("<Client_%d> Sto inizializzando le strutture con il pathname assegnatomi: %s\n", pid, files[child]);
                 strcpy(sendByFIFO1.pathname, files[child]);
@@ -267,66 +269,61 @@ int main(int argc, char * argv[]) {
                 divideString(buff,sendByFIFO1.portion,sendByFIFO2.portion,sendByMsgQ.portion,dummyShM.portion); //dividiamo il file e lo salviamo nelle stringhe
                 printf("<Client_%d> Ho diviso il file!\n", pid);
                 //blocco il figlio
-                printf("sto per semaforo");
-                semOp(semForChild, (unsigned short)1, -1); //TODO: Da verificare!
-                semOp(semForChild, (unsigned short)1, 0); //Rimane fermo fin quando tutti non sono 0.
+                semOp(semForChild, (unsigned short)0, -1); //TODO: Da verificare!
+                semOp(semForChild, (unsigned short)0, 0); //Rimane fermo fin quando tutti non sono 0.
                 //iniziano inviare
-                printf("post semaforo");
-
                 do{
                     //INIZIO INVIO
                     printf("<Client_%d> Sto per iniziare ad inviare\n", pid);
                     //scrittura in FIFO1
-                    if(checkinvio[0]!=1){
-                        printf("semaforo riga 281");
+                    if(checkinvio[0] == 0){
                         semOp(mutex,(unsigned short)0,-1);
-                        printf("<Client_%d> Sto per verificare il valore del semaforo della fifo1\n", pid);
-                        int semFIFO1value = semctl(semIdForIPC, 1, GETVAL, 0); //recupero il valore del semaforo per verificare se l'IPC è piena o no
+                        int semFIFO1value = semctl(semIdForIPC, 0, GETVAL, 0); //recupero il valore del semaforo per verificare se l'IPC è piena o no
                         if(semFIFO1value == -1)
                             errExit("<Client_0> Non sono riuscito a recuperare il valore del semaforo della FIFO1\n");
                         else if(semFIFO1value > 0){
-                            printf("<Client_%d> Ok sto per entrare nella coda\n", pid);
-                            printf("semaforo riga 289");
                             semOp(semIdForIPC,(unsigned short)0,-1);//mi prenoto il posto nell'IPC
                             semOp(mutex,(unsigned short)0,1); //lascio accedere alla mutex al prossimo client
-                            printf("<Client_%d> Sto per fare l'invio...\n",pid);
                             if(write(fdFIFO1, &sendByFIFO1, sizeof(sendByFIFO1)) == -1){
                                 errExit("<Client_0> Non sono riuscito a scrivere nella FIFO1\n");
                             }
-                            printf("<Client_%d> ho fatto l'invio\n",pid);
+                            printf("<Client_%d> ho fatto l'invio in FIFO1\n",pid);
                             checkinvio[0]=1;
                             close(fdFIFO1);
+                        }
+                        else{
+                            semOp(mutex, (unsigned short)0, 1);
                         }
                     }
 
                     //scrittura in FIFO2
-                    if(checkinvio[1]!=1){
-                        printf("semaforo riga 304");
+                    if(checkinvio[1] == 0){
                         semOp(mutex,(unsigned short)1,-1);
-                        int semFIFO2value = semctl(semIdForIPC, 2, GETVAL, 0);
+                        int semFIFO2value = semctl(semIdForIPC, 1, GETVAL, 0);
                         if(semFIFO2value == -1)
                             errExit("<Client_0> Non sono riuscito a recuperare il valore del semaforo della FIFO2\n");
                         else if(semFIFO2value > 0){
-                            printf("semaforo riga 310");
                             semOp(semIdForIPC,(unsigned short)1,-1);
                             semOp(mutex,(unsigned short)1,1);
                             if(write(fdFIFO2, &sendByFIFO2, sizeof(sendByFIFO2)) == -1){
                                 errExit("<Client_0> Non sono riuscito a scrivere nella FIFO2\n");
                             }
+                            printf("<Client_%d> ho fatto l'invio in FIFO2\n",pid);
                             checkinvio[1]=1;
                             close(fdFIFO2);
+                        }
+                        else{
+                            semOp(mutex, (unsigned short)1, 1);
                         }
                     }
 
                     //scrittura in Shared Memory
-                    if(checkinvio[2]!=1) {
-                        printf("semaforo riga 323");
+                    if(checkinvio[2] == 0) {
                         semOp(mutex, (unsigned short)2, -1);
                         int semShMvalue = semctl(semIdForIPC, 3, GETVAL, 0);
                         if (semShMvalue == -1)
                             errExit("<Client_0> Non sono riuscito a recuperare il valore del semaforo della shared memory\n");
                         else if (semShMvalue > 0) {
-                            printf("semaforo riga 329");
                             semOp(semIdForIPC, (unsigned short)2, -1);
                             semOp(mutex, (unsigned short)2, 1);
                             semOp(mutex, (unsigned short)4, -1);
@@ -335,42 +332,47 @@ int main(int argc, char * argv[]) {
                             //sendByShMemory[cursor].pid = dummyShM.pid;//copio il pid di dummy nella shared memory
                             strcpy(sendByShMemory[cursor].pathname, dummyShM.pathname);
                             strcpy(sendByShMemory[cursor].portion, dummyShM.portion);
+                            sendByShMemory[cursor].mtype = 0;
                             cursor++;
 
                             if (cursor == maxCursor)
                                 cursor = 0;
-                            printf("semaforo riga 342");
                             semOp(mutex, (unsigned short)4, 1);
+                            printf("<Client_%d> ho fatto l'invio in shared memory\n",pid);
                             checkinvio[2] = 1;
                             free_shared_memory(sendByShMemory);
+                        }
+                        else{
+                            semOp(mutex, (unsigned short)2, 1);
                         }
                     }
 
                     //Msg Queue
-                    if(checkinvio[3]!=1){
-                        printf("semaforo riga 350");
+                    if(checkinvio[3] == 0){
                         semOp(mutex, (unsigned short)3,-1);
-                        int semMsgQvalue = semctl(semIdForIPC, 4, GETVAL, 0);
+                        int semMsgQvalue = semctl(semIdForIPC, 3, GETVAL, 0);
                         if(semMsgQvalue == -1)
                             errExit("<Client_0> Non sono riuscito a recuperare il valore del semaforo della message queue\n");
                         else if(semMsgQvalue > 0){
-                            printf("semaforo riga 356");
                             semOp(semIdForIPC,(unsigned short)3,-1);
                             semOp(mutex, (unsigned short)3,1);
                             int sizeOfMsg = sizeof(struct mymsg) - sizeof(long);
                             if(msgsnd(msgQId,&sendByMsgQ,sizeOfMsg,0) == -1)
-                                errExit("<Client_0> Non sono riuscito a inviare un messaggio nella message queue\n");
+                                errExit("<Client> Non sono riuscito a inviare un messaggio nella message queue\n");
                             checkinvio[3] = 1;
+                            printf("<Client_%d> ho fatto l'invio in msgQ\n",pid);
+                        }
+                        else{
+                            semOp(mutex, (unsigned short)3, 1);
                         }
                     }
 
-                }while(checkinvio[0] != 1 && checkinvio[1] != 1 && checkinvio[2] != 1 && checkinvio[3] != 1);
+                }while(checkinvio[0] != 1 || checkinvio[1] != 1 || checkinvio[2] != 1 || checkinvio[3] != 1); //TODO si potrebbe mettere un contatore
 
                 close(fd);
-                kill(getpid(),SIGTERM);
-                
+                kill(pid,SIGKILL);
+                //exit(child);
             }
-
         }
         /*Client_0 si mette in attesa di conferma fine lavoro da
                  * server la conferma sarà un 1 in mtype

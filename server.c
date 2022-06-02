@@ -63,7 +63,7 @@ int main() {
     shmId = alloc_shared_memory(IPC_PRIVATE, sizeof(struct mymsg) * 50);
     printf("<Server> Ho allocato memoria la shared memory, con id: %d\n", shmId);
     
-    //creo la msg queue
+    //creo la msg queue TODO cambio da ipc private
     msQId = msgget(IPC_PRIVATE, IPC_CREAT | S_IRUSR | S_IWUSR);
     printf("<Server> Ho creato la coda di messaggi, con id: %d\n", msQId);
 
@@ -110,7 +110,7 @@ int main() {
         //chiusura momentanea per poi riaprirla in scrittura per inviare ID di shm, msgq e semIdForIPC
         close(fdfifo1);
         sleep(5); //dovrebbe evitare che server si blocchi in apertura della fifo
-        fdfifo1 = open(fifo1name,O_WRONLY);
+        fdfifo1 = open(fifo1name,O_WRONLY); //TODO metterlo sia in lettura che in scrittura
         printf("<Server> Ho aperto la fifo1 in scrittura\n");
 
         printf("<Server> Invio ID della shared memory a Client_0\n");
@@ -147,6 +147,8 @@ int main() {
         int cursor = 0, leggi, closedIPC[] = {0, 0, 0, 0};
         //variabile di aiuto per la dimensione della message queue
         int sizeOfMessage = sizeof(struct mymsg) - sizeof(long);
+        //contat per tenere conto delle letture nelle FIFO 1 e 2
+        int counterForFIFO1 = n_files, counterForFIFO2 = n_files;
 
         //INIZIO RICEZIONE
         printf("<Server> Inizio ricezione dei file\n");
@@ -155,36 +157,32 @@ int main() {
              * in scrittura la read tornerà 0
              */
             //leggo dalla fifo1 TODO se non trova da leggere si blocca
-            if(closedIPC[0] == 0){
+            if(counterForFIFO1 > 0){
                 printf("<Server> Verifico la fifo1\n");
                 leggi = read(fdfifo1, &rcvFromFifo1,sizeof(rcvFromFifo1));
                 if(leggi == -1) {
                     errExit("<Server> Non sono riuscito a leggere dalla FIFO1\n");
                 }
-
-                else if(leggi == 0){ //tutti i client hanno scritto ed è stato letto tutto chiusura FIFO
-                    closedIPC[0] = 1;
-                }
                 else {
                     fillTheBuffer(rcvFromFifo1, buffer, n_files, 1);
+                    printf("<Server> Ho salvato il messaggio della FIFO1 del processo %d\n",rcvFromFifo1.pid);
                     semOp(semIdForIPC,0,1);
-                    printf("<Server> Ho recuperato fifo1");
+                    counterForFIFO1--;
                 }
             }
 
             //lettura da FIFO2 TODO se non trova da leggere si blocca
-            if(closedIPC[1] == 0) {
+            if(counterForFIFO2 > 0) {
                 printf("<Server Verifico la fifo2\n");
                 leggi = read(fdfifo2, &rcvFromFifo2, sizeof(rcvFromFifo2));
                 if (leggi == -1) {
                     errExit("<Server> Non sono riuscito a leggere dalla FIFO2\n");
                 }
-                else if (leggi == 0) {
-                    closedIPC[1] = 1;
-                }
                 else {
                     fillTheBuffer(rcvFromFifo2, buffer, n_files, 2);
+                    printf("<Server> Ho salvato il messaggio della FIFO2 del processo %d\n",rcvFromFifo2.pid);
                     semOp(semIdForIPC, 1, 1);
+                    counterForFIFO2--;
                 }
             }
             //lettura shared Memory
@@ -201,6 +199,7 @@ int main() {
                 }
                 else if(rcvFromShM[cursor].mtype == 0){
                     fillTheBuffer(rcvFromShM[cursor], buffer, n_files, 3);
+                    printf("<Server> Ho salvato il messaggio della shared memory del processo %d\n",rcvFromShM->pid);
                     rcvFromShM[cursor].mtype = 1;
                     cursor++;
                     if(cursor == 50){
@@ -221,14 +220,20 @@ int main() {
                 }
                 else {
                     fillTheBuffer(rcvFromMsgQ, buffer, n_files, 4);
-                    semOp(msQId, 3, 1);
+                    printf("<Server> Ho salvato il messaggio della msgQ del processo %d\n",rcvFromMsgQ.pid);
                     counterForMsgQ--;
                     if(counterForMsgQ == 0)
                         closedIPC[3] = 1;
+                    semOp(semIdForIPC, 3, 1);
                 }
             }
+            if(counterForFIFO1 == 0)
+                closedIPC[0] = 1;
+            if(counterForFIFO2 == 0)
+                closedIPC[1] = 1;
         }
 
+        printf("<Server> Sto per ricostruire e scrivere su file i messaggi\n");
         //Ricostruzione messaggi
         for(int i = 0; i < n_files; i++){
             //preparo le lunghezze delle 4 parti per le future write e il cast a str del pid
