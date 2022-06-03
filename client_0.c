@@ -327,10 +327,10 @@ int main(int argc, char * argv[]) {
                         if (semShMvalue == -1)
                             errExit("<Client_0> Non sono riuscito a recuperare il valore del semaforo della shared memory\n");
                         else if (semShMvalue > 0) {
-                            semOp(semIdForIPC, (unsigned short)2, -1);
+                            semOp(semIdForIPC, (unsigned short)2, -1);//diventa bloccante per tutti!
                             semOp(mutex, (unsigned short)2, 1);
                             semOp(mutex, (unsigned short)4, -1);
-
+                            //cursor deve essere condivisibile!!! semaforo
                             memcpy(&sendByShMemory[cursor].pid,&dummyShM.pid, sizeof(int));
                             //sendByShMemory[cursor].pid = dummyShM.pid;//copio il pid di dummy nella shared memory
                             strcpy(sendByShMemory[cursor].pathname, dummyShM.pathname);
@@ -397,7 +397,7 @@ int main(int argc, char * argv[]) {
         if(sigfillset(&signalSet) == -1){
             errExit("\"<Client_0> Non sono riuscito a riempire il set di segnali\\n\"");
         }
-        //aggiunta dei segnali SIGINT e SIGUSR1 alla maschera
+        //rimozione dei segnali SIGINT e SIGUSR1 alla maschera
         if(sigdelset(&signalSet, SIGINT | SIGUSR1) == -1){
             errExit("\"<Client_0> Non sono riuscito a togliere SIGINT e SIGUSR1 dal set di segnali\\n\"");
         }

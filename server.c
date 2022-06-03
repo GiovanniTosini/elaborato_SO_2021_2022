@@ -192,8 +192,8 @@ int main() {
              * e che quindi hanno tutti finito
              * allora server farà detach e remove della shared memory
              */
-            if(closedIPC[2] == 0){
-                printf("<Server Verifico la shared memory\n");
+            if(closedIPC[2] == 0){ //TODO MUTEX per leggere!
+                printf("<Server> Verifico la shared memory\n");
                 if(rcvFromShM[cursor].mtype == 1){ //TODO l'mtype da sistemare
                     closedIPC[2] = 1;
                 }
