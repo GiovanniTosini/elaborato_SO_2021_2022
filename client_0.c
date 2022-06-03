@@ -243,6 +243,7 @@ int main(int argc, char * argv[]) {
                 sendByFIFO2.pid = pid;
                 sendByMsgQ.pid = pid;
                 dummyShM.pid = pid;
+
                 //inizializzo mtype
                 sendByMsgQ.mtype = 2;
                 //salvataggio pathname del file
@@ -251,12 +252,12 @@ int main(int argc, char * argv[]) {
                 strcpy(sendByFIFO2.pathname, files[child]);
                 strcpy(sendByMsgQ.pathname, files[child]);
                 strcpy(dummyShM.pathname, files[child]);
-                /* lasciamo così momentaneamente
-                sendByFIFO1->pathname = files[child];
-                sendByFIFO2->pathname = files[child];
-                sendByMsgQ.pathname = files[child];
-                dummyShM->pathname = files[child];
-                */
+
+                strcpy(sendByFIFO1.portion,"");
+                strcpy(sendByFIFO2.portion,"");
+                strcpy(sendByMsgQ.portion,"");
+                strcpy(dummyShM.portion,"");
+
 
                 printf("<Client_%d> Sto per aprire il file %s\n", pid, files[child]);
                 int fd = open(files[child], O_RDONLY, S_IRUSR); //apertura child-esimo file

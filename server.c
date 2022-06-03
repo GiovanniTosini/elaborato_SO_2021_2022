@@ -198,7 +198,7 @@ int main() {
                     closedIPC[2] = 1;
                 }
                 else if(rcvFromShM[cursor].mtype == 0){
-                    fillTheBuffer(rcvFromShM[cursor], buffer, n_files, 3);
+                    fillTheBuffer(rcvFromShM[cursor], buffer, n_files, 4);
                     printf("<Server> Ho salvato il messaggio della shared memory del processo %d\n",rcvFromShM->pid);
                     rcvFromShM[cursor].mtype = 1;
                     cursor++;
@@ -219,8 +219,9 @@ int main() {
                         errExit("<Server> Non sono riuscito a ricevere un messaggio dalla message queue\n");
                 }
                 else {
-                    fillTheBuffer(rcvFromMsgQ, buffer, n_files, 4);
+                    fillTheBuffer(rcvFromMsgQ, buffer, n_files, 3);
                     printf("<Server> Ho salvato il messaggio della msgQ del processo %d\n",rcvFromMsgQ.pid);
+                    printf("Messaggio: %s", rcvFromMsgQ.portion);
                     counterForMsgQ--;
                     if(counterForMsgQ == 0)
                         closedIPC[3] = 1;
