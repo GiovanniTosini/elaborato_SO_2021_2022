@@ -264,11 +264,13 @@ int main(int argc, char * argv[]) {
                 if(fd==-1)
                     errExit("<Client_figlio> Errore client open");
                 printf("<Client_%d> Ho aperto il file!\n", pid);
-                stat(files[child], &fileStatistics); //prendo statistiche file
-                read(fd, buff, fileStatistics.st_size); //leggo il file
-                printf("<Client_%d> Sto per dividere il file\n", pid);
+                fstat(fd, &fileStatistics); //prendo statistiche file
+
+                read(fd, buff, fileStatistics.st_size+1); //leggo il file //TODO TODO TODO
+
+                printf("<Client_%d> Sto per dividere il file: %s\n", pid,buff);
                 divideString(buff,sendByFIFO1.portion,sendByFIFO2.portion,sendByMsgQ.portion,dummyShM.portion); //dividiamo il file e lo salviamo nelle stringhe
-                printf("<Client_%d> Ho diviso il file!\n", pid);
+                printf("<Client_%d> Ho diviso il file!\nfifo1: %s\nfifo2: %s\nMsgQ: %s\nShm: %s\n", pid,sendByFIFO1.portion,sendByFIFO2.portion,sendByMsgQ.portion,dummyShM.portion);
                 //blocco il figlio
                 semOp(semForChild, (unsigned short)0, -1); //TODO: Da verificare!
                 semOp(semForChild, (unsigned short)0, 0); //Rimane fermo fin quando tutti non sono 0.

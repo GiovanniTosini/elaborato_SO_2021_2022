@@ -8,6 +8,7 @@
 #include <sys/stat.h>
 #include <string.h>
 #include <sys/msg.h>
+#include <stdio.h>
 
 //scorre i file, verifica che siano validi e li salva in "*files"
 //TODO i file devono essere .txt
@@ -69,21 +70,28 @@ void divideString(char buff[],char sendByFIFO1[],char sendByFIFO2[],char sendByM
 
     int step = 0;
     char subBuffer[4][1050] = {"", "", "", ""};
-    int lunghezza=strlen(buff);
+    int lunghezza=strlen(buff)-1;
+    printf("Dimensione stringa: %d",lunghezza);
     switch (lunghezza) {
         case 0: //le stringhe son già inizializzate
             break;
         case 1:
-            sendByFIFO1[0] = buff[0];
+            sendByFIFO1[0] = buff[0]; //aggiungere carattere di fine stringhe
+            sendByFIFO1[1]='\0';
             break;
         case 2:
             sendByFIFO1[0] = buff[0];
+            sendByFIFO1[1]='\0';
             sendByFIFO2[0] = buff[1];
+            sendByFIFO2[1]='\0';
             break;
         case 3:
             sendByFIFO1[0] = buff[0];
+            sendByFIFO1[1]='\0';
             sendByFIFO2[0] = buff[1];
+            sendByFIFO2[1]='\0';
             sendByMsgQ[0] = buff[2];
+            sendByMsgQ[1]='\0';
             break;
             /*case 4:
             sendByFIFO1[0] = buff[0];
@@ -94,17 +102,25 @@ void divideString(char buff[],char sendByFIFO1[],char sendByFIFO2[],char sendByM
         case 5:
             sendByFIFO1[0] = buff[0];
             sendByFIFO1[1] = buff[1];
+            sendByFIFO1[2]='\0';
             sendByFIFO2[0] = buff[2];
+            sendByFIFO2[1]='\0';
             sendByMsgQ[0] = buff[3];
+            sendByMsgQ[1]='\0';
             sendByShM[0] = buff[4];
+            sendByShM[1]='\0';
             break;
         case 6:
             sendByFIFO1[0] = buff[0];
             sendByFIFO1[1] = buff[1];
+            sendByFIFO1[2]='\0';
             sendByFIFO2[0] = buff[2];
             sendByFIFO2[1] = buff[3];
+            sendByFIFO2[2]='\0';
             sendByMsgQ[0] = buff[4];
+            sendByMsgQ[1]='\0';
             sendByShM[0] = buff[5];
+            sendByShM[1]='\0';
             break;
         default:
             step=(lunghezza+divideBy4(lunghezza))/4;
