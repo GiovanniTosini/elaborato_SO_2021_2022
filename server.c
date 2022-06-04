@@ -2,7 +2,6 @@
 /// @brief Contiene l'implementazione del sender_manager.
 
 #include <sys/stat.h>
-#include <sys/shm.h>
 #include <sys/msg.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -16,7 +15,6 @@
 #include "defines.h"
 #include "shared_memory.h"
 #include "semaphore.h"
-#include "fifo.h"
 
 /* salva le parti di messaggio ciclando il buffer fino a n_files, se trova un mtype == 0
  * significa che ha raggiunto l'ultima posizione salvata, quindi in base al valore della
@@ -41,7 +39,6 @@ int semIdForIPC;
 struct mymsg rcvFromFifo1, rcvFromFifo2, *rcvFromShM, rcvFromMsgQ;
 char *fifo1name = "/tmp/myfifo1";
 char *fifo2name = "/tmp/myfifo2";
-//char *fifoDummy = "/tmp/myfifodummy"; momentaneamente sfrattata
 
 void fillTheBuffer(struct mymsg rcvFrom, struct myfile buffer[], int n_files, int ipc);
 void serverSigHandler(int sig);
@@ -99,13 +96,18 @@ int main() {
     if(signal(SIGINT, serverSigHandler) == SIG_ERR)
         errExit("<Server> Non sono riuscito a settare il signal handler per SIGINT");
 
+    //leggo il numero di file
+    int n_files;
+
     while(1){
 
-        //leggo il numero di file
-        int n_files;
+        n_files = 0;
+        //printf("\n\nn_files %d pre ricevimento\n\n", n_files);
         read(fdfifo1, &n_files, sizeof(n_files));
         printf("<Server> Ricevuti %d file con cui lavorare\n", n_files);
-        int counterForMsgQ = n_files;
+        //printf("\n\nn_files %d\n\n", n_files);
+        //contatore per FIFO1, FIFO2, shareM, MsgQ
+        int counterForFIFO1 = n_files, counterForFIFO2 = n_files, counterShM = n_files, counterForMsgQ = n_files;
 
         //chiusura momentanea per poi riaprirla in scrittura per inviare ID di shm, msgq e semIdForIPC
         close(fdfifo1);
@@ -134,7 +136,7 @@ int main() {
         rcvFromShM[0].mtype = 1;
         printf("<Server> Inviata conferma ricezione numero file a Client_0\n");
 
-        struct myfile buffer[n_files]; //POTREBBE ROMPERE LE PALLE PER QUESTO CHE VIENE DICHIARATO DINAMICAMENTE
+        struct myfile buffer[n_files]; //POTREBBE ROMPERE PER QUESTO CHE VIENE DICHIARATO DINAMICAMENTE
         //inizializzo l'array con pid a 0
         printf("<Server> Inizializzo la struttura buffer\n");
         for(int i = 0; i < n_files; i++){
@@ -147,8 +149,6 @@ int main() {
         int cursor = 0, leggi, closedIPC[] = {0, 0, 0, 0};
         //variabile di aiuto per la dimensione della message queue
         int sizeOfMessage = sizeof(struct mymsg) - sizeof(long);
-        //contat per tenere conto delle letture nelle FIFO 1 e 2
-        int counterForFIFO1 = n_files, counterForFIFO2 = n_files;
 
         //INIZIO RICEZIONE
         printf("<Server> Inizio ricezione dei file\n");
@@ -164,7 +164,7 @@ int main() {
                 }
                 else {
                     fillTheBuffer(rcvFromFifo1, buffer, n_files, 1);
-                    printf("<Server> Ho salvato il messaggio della FIFO1 del processo %d\n",rcvFromFifo1.pid);
+                    //printf("<Server> Ho salvato il messaggio della FIFO1 del processo %d\n",rcvFromFifo1.pid);
                     semOp(semIdForIPC,0,1);
                     counterForFIFO1--;
                 }
@@ -178,7 +178,7 @@ int main() {
                 }
                 else {
                     fillTheBuffer(rcvFromFifo2, buffer, n_files, 2);
-                    printf("<Server> Ho salvato il messaggio della FIFO2 del processo %d\n",rcvFromFifo2.pid);
+                    //printf("<Server> Ho salvato il messaggio della FIFO2 del processo %d\n",rcvFromFifo2.pid);
                     semOp(semIdForIPC, 1, 1);
                     counterForFIFO2--;
                 }
@@ -191,20 +191,21 @@ int main() {
              * allora server farà detach e remove della shared memory
              */
             if(closedIPC[2] == 0){
-                printf("<Server> Verifico la shared memory, mtype: %ld\nstringa: %s\npathname: %s\n", rcvFromShM[cursor].mtype, rcvFromShM[cursor].portion, rcvFromShM[cursor].pathname);
-                if(rcvFromShM[cursor].mtype == 1){
+                if(counterShM == 0){
                     closedIPC[2] = 1;
                 }
-                else if(rcvFromShM[cursor].mtype != 1){
+                else if(rcvFromShM[cursor].mtype == 0){
+                    //printf("<Server> Verifico la shared memory ricevuta dal PID %d, mtype: %ld\nstringa: %s\npathname: %s\n", rcvFromShM[cursor].pid, rcvFromShM[cursor].mtype, rcvFromShM[cursor].portion, rcvFromShM[cursor].pathname);
                     fillTheBuffer(rcvFromShM[cursor], buffer, n_files, 4);
-                    printf("<Server> Ho salvato il messaggio della shared memory del processo %d\n",rcvFromShM->pid);
+                    //printf("<Server> Ho salvato il messaggio della shared memory del processo %d\n",rcvFromShM->pid);
                     rcvFromShM[cursor].mtype = 1;
-                    printf("<Server> Ho impostato mtype: %ld cursor ha valore: %d\n", rcvFromShM->mtype, cursor);
+                    //printf("<Server> Ho impostato mtype: %ld cursor ha valore: %d\n", rcvFromShM->mtype, cursor);
                     cursor++;
                     if(cursor == 50){
                         cursor = 0;
                     }
-                    printf("<Server> Cursor: %d dopo l'incremento\n", cursor);
+                    //printf("<Server> Cursor: %d dopo l'incremento\n", cursor);
+                    counterShM--;
                     semOp(semIdForIPC, 2, 1);
                 }
             }
@@ -219,7 +220,7 @@ int main() {
                 }
                 else {
                     fillTheBuffer(rcvFromMsgQ, buffer, n_files, 3);
-                    printf("<Server> Ho salvato il messaggio della msgQ del processo %d\n",rcvFromMsgQ.pid);
+                    //printf("<Server> Ho salvato il messaggio della msgQ del processo %d\n",rcvFromMsgQ.pid);
                     counterForMsgQ--;
                     if(counterForMsgQ == 0)
                         closedIPC[3] = 1;

@@ -6,16 +6,12 @@
 #include <unistd.h>
 #include <signal.h>
 #include <sys/types.h>
-#include <unistd.h>
 #include <dirent.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <fcntl.h>
-#include <sys/shm.h>
 #include <sys/sem.h>
-#include <errno.h>
 #include <sys/msg.h>
-#include <sys/wait.h>
 
 #include "defines.h"
 #include "err_exit.h"
@@ -24,10 +20,8 @@
 
 char currdir[BUFFER_SZ];
 char files[N_FILES][MAX_PATH]; //array contenente tutti i pathname
-int n_files = 0; //TODO perché è qui? non serve
 char *fifo1name = "/tmp/myfifo1";
 char *fifo2name ="/tmp/myfifo2";
-//char *fifoDummy = "/tmp/myfifodummy";
 
 void sigHandler(int sig) {
     if(sig == SIGUSR1){
@@ -89,8 +83,10 @@ int main(int argc, char * argv[]) {
         errExit("<Client_0> Non sono riuscito a settare il signal handler\n");
     }
     //in attesa dei segnali desiderati
+    int n_files;
     while(1){
         printf("<Client_0> In attesa di CTRL+C...\n");
+        n_files = 0; //reset di files
         pause();
 
         //aperture FIFO + invio PID Client_0
@@ -130,7 +126,10 @@ int main(int argc, char * argv[]) {
         printf("<Client_0> Ciao %s, ora inizio l’invio dei file contenuti in %s\n", getenv("USER"), currdir);
 
         printf("<Client_0> Inizio a cercare\n");
-        n_files = search(files, argv[1], 0); //TODO n_files non viene aggiornato
+        n_files = search(files, argv[1], 0);
+        if(n_files == 100){
+            printf("<Client_0> Ho trovato 100 file, mi fermo qui e inizio a lavorare con loro\n");
+        }
         printf("<Client_0> Ho finito, ho trovato %d files\n", n_files);
 
         //invio del numero di files al server
@@ -171,7 +170,7 @@ int main(int argc, char * argv[]) {
 
         //attach della shared memory
         printf("<Client_0> Sto per fare la prima attach\n");
-        sendByShMemory=(struct mymsg*) get_shared_memory(shmId, 0);
+        sendByShMemory = (struct mymsg*) get_shared_memory(shmId, 0);
         /* variabili per scorrere lungo la shared memory
          * cursor è il puntatore al blocco attuale
          */
@@ -361,8 +360,8 @@ int main(int argc, char * argv[]) {
                             //sendByShMemory[cursor].pid = dummyShM.pid;//copio il pid di dummy nella shared memory
                             strcpy(sendByShMemory[cursor].pathname, dummyShM.pathname);
                             strcpy(sendByShMemory[cursor].portion, dummyShM.portion);
-                            //sendByShMemory[cursor].mtype = 0;
-                            //semOp per incrementare il valore del semaforo per il curso
+                            sendByShMemory[cursor].mtype = 0;
+                            //semOp per incrementare il valore del semaforo per il cursor
                             semOp(semCursor, (unsigned short)0, 1);
                             semOp(mutex, (unsigned short)4, 1);
                             printf("<Client_%d> Ho fatto l'invio in shared memory\n",pid);
@@ -419,17 +418,18 @@ int main(int argc, char * argv[]) {
 
         //riempio la signalSet con tutti i segnali
         if(sigfillset(&signalSet) == -1){
-            errExit("\"<Client_0> Non sono riuscito a riempire il set di segnali\\n\"");
+            errExit("\"<Client_0> Non sono riuscito a riempire il set di segnali\n");
         }
         //aggiunta dei segnali SIGINT e SIGUSR1 alla maschera
-        if(sigdelset(&signalSet, SIGINT | SIGUSR1) == -1){
-            errExit("\"<Client_0> Non sono riuscito a togliere SIGINT e SIGUSR1 dal set di segnali\\n\"");
+        if(sigdelset(&signalSet, SIGINT) == -1){
+            errExit("\"<Client_0> Non sono riuscito a togliere SIGINT e SIGUSR1 dal set di segnali\n");
+        }
+        if(sigdelset(&signalSet, SIGUSR1) == -1){
+            errExit("\"<Client_0> Non sono riuscito a togliere SIGINT e SIGUSR1 dal set di segnali\n");
         }
         if(sigprocmask(SIG_SETMASK, &signalSet, NULL) == -1){
             errExit("<Client_0> Non sono riuscito a settare la maschera dei segnali\n");
         }
 
     }
-
-    return 0;
 }
