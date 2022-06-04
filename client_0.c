@@ -22,10 +22,6 @@
 #include "semaphore.h"
 #include "shared_memory.h"
 
-#define BUFFER_SZ 150
-#define N_FILES 100 //numero massimo di file da elaborato
-#define MAX_PATH 256
-
 char currdir[BUFFER_SZ];
 char files[N_FILES][MAX_PATH]; //array contenente tutti i pathname
 int n_files = 0; //TODO perché è qui? non serve
@@ -134,7 +130,6 @@ int main(int argc, char * argv[]) {
         printf("<Client_0> Ciao %s, ora inizio l’invio dei file contenuti in %s\n", getenv("USER"), currdir);
 
         printf("<Client_0> Inizio a cercare\n");
-        printf("currdir: %s\n",currdir);
         n_files = search(files, argv[1], 0); //TODO n_files non viene aggiornato
         printf("<Client_0> Ho finito, ho trovato %d files\n", n_files);
 
@@ -150,13 +145,11 @@ int main(int argc, char * argv[]) {
         int shmId;
         printf("<Client_0> Sto per ricevere l'ID della shared memory\n");
         read(fdFIFO1, &shmId, sizeof(shmId));
-        printf("smhid: %d\n", shmId);
 
         //stessa roba con msgQ
         int msgQId; //sarebbe la msgQ
         printf("<Client_0> Sto per ricevere l'ID della message queue\n");
         read(fdFIFO1, &msgQId, sizeof(int));
-        printf("msgqid: %d\n", msgQId);
 
         //lettura ID dei semafori generati dal server
         int semIdForIPC;
@@ -181,13 +174,12 @@ int main(int argc, char * argv[]) {
         sendByShMemory=(struct mymsg*) get_shared_memory(shmId, 0);
         /* variabili per scorrere lungo la shared memory
          * cursor è il puntatore al blocco attuale
-         * maxCursor è la dimensione massima della shared memory
          */
-        int cursor = 0, maxCursor = 50; //cambiato da sizeof(struct)*50
+        int cursor = 0;
 
         //attende di ricevere messaggio conferma ricezione numero file tramite shared memory
         while(sendByShMemory[0].mtype != 1); //rimane bloccato fintanto che non riceve conferma
-        printf("<Client_0> ricevuta conferma ricezione numero file dal server\n");
+        printf("<Client_0> Ricevuta conferma ricezione numero file dal server\n");
 
         //creazione del semaforo per partenza sincrona dei figli
         int semForChild = semget(IPC_PRIVATE, 1, S_IRUSR | S_IWUSR);
@@ -205,16 +197,21 @@ int main(int argc, char * argv[]) {
         }
         if(semctl(semForChild,0,GETALL,argSemForChild)==-1)
             errExit("Errore client_0");
-        printf("valore semforchild: %d",argSemForChild.array[0]);
 
-        //inizializzo la shared memory di mtype = 0 per agevolare lettura da server
+        //inizializzo la shared memory di mtype = 2 per agevolare lettura da server
         for(int i = 0; i < 50; i++){
-            sendByShMemory[i].mtype = 0;
+            sendByShMemory[i].mtype = 2;
         }
         printf("<Client_0> Ho inizializzato la shared memory\n");
 
         //mutex per accesso al valore del semaforo per la singola IPC e gestione del cursore della shared memory
         int mutex = semget(IPC_PRIVATE,5,IPC_CREAT|S_IRUSR|S_IWUSR);
+        /* 0 -> mutex per lettura valore semaforo FIFO1
+         * 1 -> mutex per lettura valore semaforo FIFO2
+         * 2 -> mutex per lettura valore semaforo Shared Memory
+         * 3 -> mutex per lettura valore semaforo MsgQ
+         * 4 -> mutex per poter entrare a scrivere in Shared Memory
+         */
         unsigned short values[] = {1,1,1,1,1};
         union semun argMutex;
         argMutex.array = values;
@@ -222,6 +219,15 @@ int main(int argc, char * argv[]) {
         if(semctl(mutex, 0, SETALL, argMutex) == -1)
             errExit("<Client_0> Non sono riuscito a settare il semaforo mutex\n");
         printf("<Client_0> Ho generato e settato il semaforo mutex\n");
+
+        //creazione semaforo che farà ci aiuterà con il cursore della shared memory
+        int semCursor = semget(IPC_PRIVATE, 1, IPC_CREAT|S_IRUSR|S_IWUSR);
+        unsigned short cursorValue[1] = {0};
+        union semun argCursor;
+        argCursor.array = cursorValue;
+
+        if(semctl(semCursor, 0, SETALL, argCursor) == -1)
+            errExit("<Client_0> Non sono riuscito a settare il semaforo per la gestione del cursore della shared memory\n");
 
         //generazione figli
         pid_t pid;
@@ -231,11 +237,11 @@ int main(int argc, char * argv[]) {
                 errExit("<Client_0> Non sono riuscito a fare la fork\n");
             else if(pid == 0){
                 //array di supporto per il singolo figlio per verificare se ha già inviato tramite una IPC
-                printf("Ciao! Sono il figlio numero %d e sto per iniziare a lavorare!\n", child+1);
                 int checkinvio[]={0,0,0,0};
                 struct stat fileStatistics;
-                char buff[4100];
+                char buff[4100] = "";
                 int pid = getpid();
+                printf("Ciao! Sono il figlio numero %d con PID %d e sto per iniziare a lavorare!\n", child+1, pid);
                 //salvataggio del pid del figlio
                 fflush(stdout);
                 printf("<Client_%d> Sto inizializzando le strutture con il mio pid\n", pid);
@@ -264,18 +270,19 @@ int main(int argc, char * argv[]) {
                 if(fd==-1)
                     errExit("<Client_figlio> Errore client open");
                 printf("<Client_%d> Ho aperto il file!\n", pid);
-                stat(files[child], &fileStatistics); //prendo statistiche file
+                if(fstat(fd, &fileStatistics) == -1) //prendo statistiche file
+                    errExit("<Client> Non son riuscito a fare la fstat\n");
                 read(fd, buff, fileStatistics.st_size); //leggo il file
                 printf("<Client_%d> Sto per dividere il file\n", pid);
                 divideString(buff,sendByFIFO1.portion,sendByFIFO2.portion,sendByMsgQ.portion,dummyShM.portion); //dividiamo il file e lo salviamo nelle stringhe
-                printf("<Client_%d> Ho diviso il file!\n", pid);
+                printf("<Client_%d> Ho diviso il file!\nEcco le info che ho ottenuto:\npathname: %s\nper FIFO1: %s\nper FIFO2: %s\nper MsgQ: %s\nper ShM: %s\n", pid, dummyShM.pathname, sendByFIFO1.portion, sendByFIFO2.portion, sendByMsgQ.portion, dummyShM.portion);
                 //blocco il figlio
-                semOp(semForChild, (unsigned short)0, -1); //TODO: Da verificare!
+                semOp(semForChild, (unsigned short)0, -1);
                 semOp(semForChild, (unsigned short)0, 0); //Rimane fermo fin quando tutti non sono 0.
                 //iniziano inviare
                 do{
                     //INIZIO INVIO
-                    printf("<Client_%d> Sto per iniziare ad inviare\n", pid);
+
                     //scrittura in FIFO1
                     if(checkinvio[0] == 0){
                         semOp(mutex,(unsigned short)0,-1);
@@ -288,7 +295,7 @@ int main(int argc, char * argv[]) {
                             if(write(fdFIFO1, &sendByFIFO1, sizeof(sendByFIFO1)) == -1){
                                 errExit("<Client_0> Non sono riuscito a scrivere nella FIFO1\n");
                             }
-                            printf("<Client_%d> ho fatto l'invio in FIFO1\n",pid);
+                            printf("<Client_%d> Ho fatto l'invio in FIFO1\n",pid);
                             checkinvio[0]=1;
                             close(fdFIFO1);
                         }
@@ -309,7 +316,7 @@ int main(int argc, char * argv[]) {
                             if(write(fdFIFO2, &sendByFIFO2, sizeof(sendByFIFO2)) == -1){
                                 errExit("<Client_0> Non sono riuscito a scrivere nella FIFO2\n");
                             }
-                            printf("<Client_%d> ho fatto l'invio in FIFO2\n",pid);
+                            printf("<Client_%d> Ho fatto l'invio in FIFO2\n",pid);
                             checkinvio[1]=1;
                             close(fdFIFO2);
                         }
@@ -321,25 +328,44 @@ int main(int argc, char * argv[]) {
                     //scrittura in Shared Memory
                     if(checkinvio[2] == 0) {
                         semOp(mutex, (unsigned short)2, -1);
-                        int semShMvalue = semctl(semIdForIPC, 3, GETVAL, 0);
+                        int semShMvalue = semctl(semIdForIPC, 2, GETVAL, 0);
                         if (semShMvalue == -1)
-                            errExit("<Client_0> Non sono riuscito a recuperare il valore del semaforo della shared memory\n");
+                            errExit("<Client> Non sono riuscito a recuperare il valore del semaforo della shared memory\n");
                         else if (semShMvalue > 0) {
                             semOp(semIdForIPC, (unsigned short)2, -1);
                             semOp(mutex, (unsigned short)2, 1);
                             semOp(mutex, (unsigned short)4, -1);
 
+                            /* Usiamo un semaforo per la gestione del cursore per scrivere sulla shared memory
+                             * ogni client che riuscirà a entrare per scrivere sulla shared memory andrà
+                             * a recuperare il valore del semaforo per il cursore (semCursor), controllerà
+                             * che non sia già al valore 50 perché in quel caso uscirebbe dall'area dedicata
+                             * alla shared memory, in tal caso lo resetta. Dopo che ha scritto farà una semOp
+                             * per poter condividere con gli altri Client tale valore
+                             */
+                            cursor = semctl(semCursor, 0, GETVAL, 0);
+                            if(cursor == -1)
+                                errExit("<Client> Non sono riuscito a recuperare il valore del semaforo del cursore\n");
+                            if(cursor == 50){
+                                argCursor.array[0] = 0;
+                                if(semctl(semCursor, 0, SETALL, argCursor) == -1)
+                                    errExit("<Client> Non sono riuscito a resettare il valore del semaforo per il cursore\n");
+                                cursor = 0;
+                            }
+                            //printf("<Client_%d> Il valore del cursore che andrò a usare è: %d\n", pid, cursor);
+                            //printf("<Client_%d> pid: %d\npathname: %s\nstringa: %s\n", pid, pid, dummyShM.pathname, dummyShM.portion);
+
+                            //dummyShM.mtype = 0;
+                            //memcpy(&sendByShMemory[cursor].mtype, &dummyShM.mtype, sizeof(long));
                             memcpy(&sendByShMemory[cursor].pid,&dummyShM.pid, sizeof(int));
                             //sendByShMemory[cursor].pid = dummyShM.pid;//copio il pid di dummy nella shared memory
                             strcpy(sendByShMemory[cursor].pathname, dummyShM.pathname);
                             strcpy(sendByShMemory[cursor].portion, dummyShM.portion);
-                            sendByShMemory[cursor].mtype = 0;
-                            cursor++;
-
-                            if (cursor == maxCursor)
-                                cursor = 0;
+                            //sendByShMemory[cursor].mtype = 0;
+                            //semOp per incrementare il valore del semaforo per il curso
+                            semOp(semCursor, (unsigned short)0, 1);
                             semOp(mutex, (unsigned short)4, 1);
-                            printf("<Client_%d> ho fatto l'invio in shared memory\n",pid);
+                            printf("<Client_%d> Ho fatto l'invio in shared memory\n",pid);
                             checkinvio[2] = 1;
                             free_shared_memory(sendByShMemory);
                         }
@@ -361,14 +387,14 @@ int main(int argc, char * argv[]) {
                             if(msgsnd(msgQId,&sendByMsgQ,sizeOfMsg,0) == -1)
                                 errExit("<Client> Non sono riuscito a inviare un messaggio nella message queue\n");
                             checkinvio[3] = 1;
-                            printf("<Client_%d> ho fatto l'invio in msgQ\n",pid);
+                            printf("<Client_%d> Ho fatto l'invio in msgQ\n",pid);
                         }
                         else{
                             semOp(mutex, (unsigned short)3, 1);
                         }
                     }
 
-                }while(checkinvio[0] != 1 || checkinvio[1] != 1 || checkinvio[2] != 1 || checkinvio[3] != 1); //TODO si potrebbe mettere un contatore
+                }while(checkinvio[0] != 1 || checkinvio[1] != 1 || checkinvio[2] != 1 || checkinvio[3] != 1);
 
                 close(fd);
                 kill(pid,SIGKILL);

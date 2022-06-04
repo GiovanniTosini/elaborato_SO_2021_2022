@@ -62,7 +62,7 @@ int main() {
     //creo la shared memory
     shmId = alloc_shared_memory(IPC_PRIVATE, sizeof(struct mymsg) * 50);
     printf("<Server> Ho allocato memoria la shared memory, con id: %d\n", shmId);
-    
+
     //creo la msg queue TODO cambio da ipc private
     msQId = msgget(IPC_PRIVATE, IPC_CREAT | S_IRUSR | S_IWUSR);
     printf("<Server> Ho creato la coda di messaggi, con id: %d\n", msQId);
@@ -158,7 +158,6 @@ int main() {
              */
             //leggo dalla fifo1 TODO se non trova da leggere si blocca
             if(counterForFIFO1 > 0){
-                printf("<Server> Verifico la fifo1\n");
                 leggi = read(fdfifo1, &rcvFromFifo1,sizeof(rcvFromFifo1));
                 if(leggi == -1) {
                     errExit("<Server> Non sono riuscito a leggere dalla FIFO1\n");
@@ -173,7 +172,6 @@ int main() {
 
             //lettura da FIFO2 TODO se non trova da leggere si blocca
             if(counterForFIFO2 > 0) {
-                printf("<Server Verifico la fifo2\n");
                 leggi = read(fdfifo2, &rcvFromFifo2, sizeof(rcvFromFifo2));
                 if (leggi == -1) {
                     errExit("<Server> Non sono riuscito a leggere dalla FIFO2\n");
@@ -193,25 +191,26 @@ int main() {
              * allora server farà detach e remove della shared memory
              */
             if(closedIPC[2] == 0){
-                printf("<Server Verifico la shared memory\n");
-                if(rcvFromShM[cursor].mtype == 1){ //TODO l'mtype da sistemare
+                printf("<Server> Verifico la shared memory, mtype: %ld\nstringa: %s\npathname: %s\n", rcvFromShM[cursor].mtype, rcvFromShM[cursor].portion, rcvFromShM[cursor].pathname);
+                if(rcvFromShM[cursor].mtype == 1){
                     closedIPC[2] = 1;
                 }
-                else if(rcvFromShM[cursor].mtype == 0){
+                else if(rcvFromShM[cursor].mtype != 1){
                     fillTheBuffer(rcvFromShM[cursor], buffer, n_files, 4);
                     printf("<Server> Ho salvato il messaggio della shared memory del processo %d\n",rcvFromShM->pid);
                     rcvFromShM[cursor].mtype = 1;
+                    printf("<Server> Ho impostato mtype: %ld cursor ha valore: %d\n", rcvFromShM->mtype, cursor);
                     cursor++;
                     if(cursor == 50){
                         cursor = 0;
                     }
+                    printf("<Server> Cursor: %d dopo l'incremento\n", cursor);
                     semOp(semIdForIPC, 2, 1);
                 }
             }
 
             if(closedIPC[3] == 0){
-                printf("<Server Verifico la message queue\n");
-                //lettura message queue TODO mettere un contatore di volte in cui si è trovata la msgQ vuota, arrivato a quello si esce dal ciclo delle letture?
+                //lettura message queue
                 if(msgrcv(msQId, &rcvFromMsgQ, sizeOfMessage, 0, IPC_NOWAIT) == -1) {
                     if (errno == ENOMSG)
                         printf("<Server> Message Queue vuota, proseguo oltre\n");
@@ -221,7 +220,6 @@ int main() {
                 else {
                     fillTheBuffer(rcvFromMsgQ, buffer, n_files, 3);
                     printf("<Server> Ho salvato il messaggio della msgQ del processo %d\n",rcvFromMsgQ.pid);
-                    printf("Messaggio: %s", rcvFromMsgQ.portion);
                     counterForMsgQ--;
                     if(counterForMsgQ == 0)
                         closedIPC[3] = 1;
@@ -291,6 +289,7 @@ int main() {
         int sizeOfResult = sizeof(struct mymsg) - sizeof(long);
         if(msgsnd(msQId, &rcvFromMsgQ, sizeOfResult, 0) == -1)
             errExit("<Server> Non sono riuscito a inviare la conferma di lavoro concluso\n");
+        printf("<Server> Torno in attesa...\n");
     }
 }
 

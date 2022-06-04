@@ -4,19 +4,18 @@
 
 #include "defines.h"
 #include <dirent.h>
-#include <sys/types.h>
 #include <sys/stat.h>
 #include <string.h>
-#include <sys/msg.h>
+#include <stdio.h>
 
 //scorre i file, verifica che siano validi e li salva in "*files"
 //TODO i file devono essere .txt
-int search(char files[100][256], char currdir[], int n_files){
+int search(char files[100][MAX_PATH], char currdir[], int n_files){
 
     struct dirent *dentry;
     struct stat sb; //struttura di supporto per verificare la dimensione del singolo file
     DIR *dirp = opendir(currdir);
-    char dummy [256] = "";
+    char dummy [MAX_PATH] = "";
     strcpy(dummy, currdir);
 
     /* skippa le cartelle '.' e '..'
@@ -30,7 +29,7 @@ int search(char files[100][256], char currdir[], int n_files){
         }
         //se è un file ed inizia con 'sendme_' otteniamo il suo path e lo carichiamo in memoria
         if((dentry->d_type == DT_REG) && (strncmp(dentry->d_name, "sendme_", strlen("sendme_")) == 0)){
-            char pathname[256] = ""; //pathname attuale
+            char pathname[MAX_PATH] = ""; //pathname attuale
             strcpy(pathname, dummy);
             strcat(pathname, dentry->d_name);
             stat(pathname, &sb); //ottengo info file
@@ -42,7 +41,7 @@ int search(char files[100][256], char currdir[], int n_files){
             //strcpy(dummy, currdir);
         }else if(dentry->d_type == DT_DIR){
 
-            char pathWithDir[256] = "";
+            char pathWithDir[MAX_PATH] = "";
             strcpy(pathWithDir, dummy);
             strcat(pathWithDir, dentry->d_name);
             strcat(pathWithDir, "/");
@@ -67,51 +66,117 @@ int divideBy4(int counter){
 
 void divideString(char buff[],char sendByFIFO1[],char sendByFIFO2[],char sendByMsgQ[],char sendByShM[]){
 
-    int step = 0;
+    char dummy[4100] = "";
+    //togliamo il carattere di end of file
+    int i = 0;
+    while(i < strlen(buff)){
+        if(buff[i] != EOF)
+            dummy[i] = buff[i];
+        i++;
+    }
+    dummy[i] = '\0';
+    int step;
     char subBuffer[4][1050] = {"", "", "", ""};
-    int lunghezza=strlen(buff);
+    int lunghezza = (strlen(dummy)-1); //non considero il carattere di fine stringa
+    printf("strlen %u\n di %s .\n", lunghezza, dummy);
     switch (lunghezza) {
         case 0: //le stringhe son già inizializzate
+            sendByFIFO1[0] = '\0';
+            sendByFIFO2[0] = '\0';
+            sendByMsgQ[0] = '\0';
+            sendByShM[0] = '\0';
             break;
         case 1:
-            sendByFIFO1[0] = buff[0];
+            sendByFIFO1[0] = dummy[0];
+            sendByFIFO1[1] = '\0';
+            sendByFIFO2[0] = '\0';
+            sendByMsgQ[0] = '\0';
+            sendByShM[0] = '\0';
             break;
         case 2:
-            sendByFIFO1[0] = buff[0];
-            sendByFIFO2[0] = buff[1];
+            sendByFIFO1[0] = dummy[0];
+            sendByFIFO1[1] = '\0';
+            sendByFIFO2[0] = dummy[1];
+            sendByFIFO2[1] = '\0';
+            sendByMsgQ[0] = '\0';
+            sendByShM[0] = '\0';
             break;
         case 3:
-            sendByFIFO1[0] = buff[0];
-            sendByFIFO2[0] = buff[1];
-            sendByMsgQ[0] = buff[2];
+            sendByFIFO1[0] = dummy[0];
+            sendByFIFO1[1] = '\0';
+            sendByFIFO2[0] = dummy[1];
+            sendByFIFO2[1] = '\0';
+            sendByMsgQ[0] = dummy[2];
+            sendByMsgQ[1] = '\0';
+            sendByShM[0] = '\0';
             break;
-            /*case 4:
+        case 4:
             sendByFIFO1[0] = buff[0];
+            sendByFIFO1[1] = '\0';
             sendByFIFO2[0] = buff[1];
+            sendByFIFO2[1] = '\0';
             sendByMsgQ[0] = buff[2];
+            sendByMsgQ[1] = '\0';
             sendByShM[0] = buff[3];
-            break;*/
+            sendByShM[1] = '\0';
+            break;
         case 5:
-            sendByFIFO1[0] = buff[0];
-            sendByFIFO1[1] = buff[1];
-            sendByFIFO2[0] = buff[2];
-            sendByMsgQ[0] = buff[3];
-            sendByShM[0] = buff[4];
+            sendByFIFO1[0] = dummy[0];
+            sendByFIFO1[1] = dummy[1];
+            sendByFIFO1[2] = '\0';
+            sendByFIFO2[0] = dummy[2];
+            sendByFIFO2[1] = '\0';
+            sendByMsgQ[0] = dummy[3];
+            sendByMsgQ[1] = '\0';
+            sendByShM[0] = dummy[4];
+            sendByShM[1] = '\0';
             break;
         case 6:
-            sendByFIFO1[0] = buff[0];
-            sendByFIFO1[1] = buff[1];
-            sendByFIFO2[0] = buff[2];
-            sendByFIFO2[1] = buff[3];
-            sendByMsgQ[0] = buff[4];
-            sendByShM[0] = buff[5];
+            sendByFIFO1[0] = dummy[0];
+            sendByFIFO1[1] = dummy[1];
+            sendByFIFO1[2] = '\0';
+            sendByFIFO2[0] = dummy[2];
+            sendByFIFO2[1] = dummy[3];
+            sendByFIFO2[2] = '\0';
+            sendByMsgQ[0] = dummy[4];
+            sendByMsgQ[1] = '\0';
+            sendByShM[0] = dummy[5];
+            sendByShM[1] = '\0';
+            break;
+        case 7:
+            sendByFIFO1[0] = dummy[0];
+            sendByFIFO1[1] = dummy[1];
+            sendByFIFO1[2] = '\0';
+            sendByFIFO2[0] = dummy[2];
+            sendByFIFO2[1] = dummy[3];
+            sendByFIFO2[2] = '\0';
+            sendByMsgQ[0] = dummy[4];
+            sendByMsgQ[1] = dummy[5];
+            sendByMsgQ[2] = '\0';
+            sendByShM[0] = dummy[6];
+            sendByShM[1] = '\0';
+            break;
+        case 9:
+            sendByFIFO1[0] = dummy[0];
+            sendByFIFO1[1] = dummy[1];
+            sendByFIFO1[2] = dummy[2];
+            sendByFIFO1[3] = '\0';
+            sendByFIFO2[0] = dummy[3];
+            sendByFIFO2[1] = dummy[4];
+            sendByFIFO2[2] = dummy[5];
+            sendByFIFO2[3] = '\0';
+            sendByMsgQ[0] = dummy[6];
+            sendByMsgQ[1] = dummy[7];
+            sendByMsgQ[2] = '\0';
+            sendByShM[0] = dummy[8];
+            sendByShM[1] = '\0';
             break;
         default:
-            step=(lunghezza+divideBy4(lunghezza))/4;
-            int offset=0;
+            step = (lunghezza + divideBy4(lunghezza)) / 4;
+            int offset = 0;
 
-            for(int i=0;i<4;i++){
-                memcpy(subBuffer[i],&buff[offset],step);
+            for(int i = 0; i < 4; i++){
+                memcpy(subBuffer[i],&dummy[offset],step);
                 offset += step;
             }
             strcpy(sendByFIFO1, subBuffer[0]);
