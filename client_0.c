@@ -132,10 +132,10 @@ int main(int argc, char * argv[]) {
         }
         printf("<Client_0> Ho finito, ho trovato %d files\n", n_files);
 
-        //invio del numero di files al server
+        //invio del numero di files al server TODO controllo write
         write(fdFIFO1, &n_files, sizeof(int));
 
-        //chiusura momentanea per ricezione ID IPC
+        //chiusura momentanea per ricezione ID IPC TODO controllo close, open,...
         close(fdFIFO1);
         printf("<Client_0> Ho chiuso la fifo1 in scrittura\n");
         fdFIFO1 = open(fifo1name,O_RDONLY);

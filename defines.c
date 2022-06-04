@@ -46,7 +46,7 @@ int search(char files[100][MAX_PATH], char currdir[], int n_files){
             strcpy(pathWithDir, dummy);
             strcat(pathWithDir, dentry->d_name);
             strcat(pathWithDir, "/");
-            n_files = search(files, pathWithDir, n_files);
+            n_files = search(files, pathWithDir, n_files); //TODO forse +
         }
     }
     return n_files;

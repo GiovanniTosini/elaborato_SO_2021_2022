@@ -79,6 +79,7 @@ int main() {
     union semun argIPC;
     argIPC.array = values;
 
+
     if(semctl(semIdForIPC,0,SETALL,argIPC) == -1){
         errExit("<Server> Non sono riuscito a settare i semafori delle IPC\n");
     }
@@ -97,13 +98,20 @@ int main() {
         errExit("<Server> Non sono riuscito a settare il signal handler per SIGINT");
 
     //leggo il numero di file
-    int n_files;
+    int n_files=0;
+    //inizializzazione del cursore per shared memory
+    //leggi sarà la variabile in cui si salvano i byte letti
+    //array di supporto se una IPC viene chiusa il valore sarà modificato a 1 per evitare che il server la usi e si blocchi
+    //inoltre serve a far capire se son stati ricomposti tutti i messaggi
+    int leggi=0;
+    int closedIPC[]={0, 0, 0, 0};
+    int cursor=0;
 
     while(1){
 
-        n_files = 0;
+
         //printf("\n\nn_files %d pre ricevimento\n\n", n_files);
-        read(fdfifo1, &n_files, sizeof(n_files));
+        read(fdfifo1, &n_files, sizeof(int));
         printf("<Server> Ricevuti %d file con cui lavorare\n", n_files);
         //printf("\n\nn_files %d\n\n", n_files);
         //contatore per FIFO1, FIFO2, shareM, MsgQ
@@ -142,11 +150,8 @@ int main() {
         for(int i = 0; i < n_files; i++){
             buffer[i].pid = 0;
         }
-        //inizializzazione del cursore per shared memory
-        //leggi sarà la variabile in cui si salvano i byte letti
-        //array di supporto se una IPC viene chiusa il valore sarà modificato a 1 per evitare che il server la usi e si blocchi
-        //inoltre serve a far capire se son stati ricomposti tutti i messaggi
-        int cursor = 0, leggi, closedIPC[] = {0, 0, 0, 0};
+
+
         //variabile di aiuto per la dimensione della message queue
         int sizeOfMessage = sizeof(struct mymsg) - sizeof(long);
 
@@ -291,6 +296,14 @@ int main() {
         if(msgsnd(msQId, &rcvFromMsgQ, sizeOfResult, 0) == -1)
             errExit("<Server> Non sono riuscito a inviare la conferma di lavoro concluso\n");
         printf("<Server> Torno in attesa...\n");
+
+        leggi=0;
+        closedIPC[0]=0;
+        closedIPC[1]=0;
+        closedIPC[2]=0;
+        closedIPC[3]=0;
+        cursor=0;
+        n_files = 0;
     }
 }
 
