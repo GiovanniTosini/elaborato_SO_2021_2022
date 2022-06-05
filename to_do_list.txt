@@ -1,5 +1,4 @@
-- sistemare l'invio tramite msgQ, sizeof(struct) - sizeof(long) NECESSARIO
-- meglio se semOp +1 della shared memory venga fatto dal server
-
--non rifà l'invio
-
+- capire perchè va in segmentation fault con secondo invio in poi (variabile non ripristinata)
+- sistemare i commenti
+- sistemare i TODO
+- sistemare anche il codice, se c'è tempo

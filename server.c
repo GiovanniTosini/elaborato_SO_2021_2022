@@ -106,6 +106,8 @@ int main() {
     int leggi=0;
     int closedIPC[]={0, 0, 0, 0};
     int cursor=0;
+    int counterForFIFO1,counterForFIFO2,counterShM,counterForMsgQ;
+    int sizeOfMessage;
 
     while(1){
 
@@ -115,7 +117,10 @@ int main() {
         printf("<Server> Ricevuti %d file con cui lavorare\n", n_files);
         //printf("\n\nn_files %d\n\n", n_files);
         //contatore per FIFO1, FIFO2, shareM, MsgQ
-        int counterForFIFO1 = n_files, counterForFIFO2 = n_files, counterShM = n_files, counterForMsgQ = n_files;
+        counterForFIFO1 = n_files;
+        counterForFIFO2 = n_files;
+        counterShM = n_files;
+        counterForMsgQ = n_files;
 
         //chiusura momentanea per poi riaprirla in scrittura per inviare ID di shm, msgq e semIdForIPC
         close(fdfifo1);
@@ -153,7 +158,7 @@ int main() {
 
 
         //variabile di aiuto per la dimensione della message queue
-        int sizeOfMessage = sizeof(struct mymsg) - sizeof(long);
+        sizeOfMessage = sizeof(struct mymsg) - sizeof(long);
 
         //INIZIO RICEZIONE
         printf("<Server> Inizio ricezione dei file\n");
@@ -258,7 +263,7 @@ int main() {
             //TODO valutare se mettere i controlli dell'avvenuta write o meno
             char *newNewName = strcat(newName, ":\n");
             write(fdNewFile, newNewName, strlen(newNewName));
-            //PARTE 1
+            //PARTE 1 TODO sistemare le stampe: riga 269,...
             write(fdNewFile, "[Parte 1, del file ", strlen("[Parte 1, del file "));
             write(fdNewFile, buffer[i].pathname, strlen(buffer[i].pathname));
             write(fdNewFile, ", spedita dal processo ", strlen(", spedita dal processo "));

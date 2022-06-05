@@ -22,6 +22,7 @@ char currdir[BUFFER_SZ];
 char files[N_FILES][MAX_PATH]; //array contenente tutti i pathname
 char *fifo1name = "/tmp/myfifo1";
 char *fifo2name ="/tmp/myfifo2";
+int n_files;
 
 void sigHandler(int sig) {
     if(sig == SIGUSR1){
@@ -83,7 +84,7 @@ int main(int argc, char * argv[]) {
         errExit("<Client_0> Non sono riuscito a settare il signal handler\n");
     }
     //in attesa dei segnali desiderati
-    int n_files;
+
     while(1){
         printf("<Client_0> In attesa di CTRL+C...\n");
         n_files = 0; //reset di files
