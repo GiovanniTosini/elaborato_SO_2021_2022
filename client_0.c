@@ -127,14 +127,22 @@ int main(int argc, char * argv[]) {
         printf("<Client_0> Ciao %s, ora inizio l’invio dei file contenuti in %s\n", getenv("USER"), currdir);
 
         printf("<Client_0> Inizio a cercare\n");
+        n_files = 0;
         n_files = search(files, argv[1], 0);
+        if(n_files == 0){
+            printf("<Server> Ho trovato 0 files, chiudo");
+            exit(1);
+        }
+
         if(n_files == 100){
             printf("<Client_0> Ho trovato 100 file, mi fermo qui e inizio a lavorare con loro\n");
         }
         printf("<Client_0> Ho finito, ho trovato %d files\n", n_files);
 
-        //invio del numero di files al server TODO controllo write
-        write(fdFIFO1, &n_files, sizeof(int));
+        //invio del numero di files al server
+
+        if(write(fdFIFO1, &n_files, sizeof(int)) == -1)
+            errExit("<Client_0> Errore scrittura fifo1");
 
         //chiusura momentanea per ricezione ID IPC TODO controllo close, open,...
         close(fdFIFO1);
@@ -149,11 +157,13 @@ int main(int argc, char * argv[]) {
         //stessa roba con msgQ
         int msgQId; //sarebbe la msgQ
         printf("<Client_0> Sto per ricevere l'ID della message queue\n");
-        read(fdFIFO1, &msgQId, sizeof(int));
+        if(read(fdFIFO1, &msgQId, sizeof(int)) == -1)
+            errExit("<Client_0> Errore lettura fifo1");
 
         //lettura ID dei semafori generati dal server
         int semIdForIPC;
-        read(fdFIFO1, &semIdForIPC, sizeof(semIdForIPC));
+        if(read(fdFIFO1, &semIdForIPC, sizeof(semIdForIPC)) == -1)
+            errExit("<Client_0> Errore lettura fifo1");
         if(close(fdFIFO1) == -1)
             errExit("<Client_0> Non son riuscito a chiudere la fifo1 in lettura\n");
 
@@ -161,6 +171,8 @@ int main(int argc, char * argv[]) {
         printf("<Client_0> Riapro la fifo1 in scrittura\n");
         sleep(5); //facciamo attendere 10 secondi per sicurezza
         fdFIFO1 = open(fifo1name, O_WRONLY);
+        if(fdFIFO1 == -1)
+            errExit("<Client_0> Non son riuscito ad aprire la fifo1\n");
         printf("<Client_0> Ho riaperto la fifo1 in scrittura\n");
         //definizione delle strutture che verranno usate per l'invio
         struct mymsg sendByFIFO1;

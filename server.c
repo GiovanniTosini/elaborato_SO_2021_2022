@@ -40,6 +40,9 @@ struct mymsg rcvFromFifo1, rcvFromFifo2, *rcvFromShM, rcvFromMsgQ;
 char *fifo1name = "/tmp/myfifo1";
 char *fifo2name = "/tmp/myfifo2";
 
+int sizeOfResult;
+char pidToStr[8];
+
 void fillTheBuffer(struct mymsg rcvFrom, struct myfile buffer[], int n_files, int ipc);
 void serverSigHandler(int sig);
 
@@ -105,15 +108,19 @@ int main() {
     //inoltre serve a far capire se son stati ricomposti tutti i messaggi
     int leggi=0;
     int closedIPC[]={0, 0, 0, 0};
-    int cursor=0;
+    int cursor = 0;
     int counterForFIFO1,counterForFIFO2,counterShM,counterForMsgQ;
     int sizeOfMessage;
 
+
     while(1){
 
-
+        n_files = 0;
         //printf("\n\nn_files %d pre ricevimento\n\n", n_files);
+
         read(fdfifo1, &n_files, sizeof(int));
+
+
         printf("<Server> Ricevuti %d file con cui lavorare\n", n_files);
         //printf("\n\nn_files %d\n\n", n_files);
         //contatore per FIFO1, FIFO2, shareM, MsgQ
@@ -126,6 +133,8 @@ int main() {
         close(fdfifo1);
         sleep(5); //dovrebbe evitare che server si blocchi in apertura della fifo
         fdfifo1 = open(fifo1name,O_WRONLY); //TODO metterlo sia in lettura che in scrittura
+        if(fdfifo1 == -1)
+            errExit("<Server> Errore open Fifo1\n");
         printf("<Server> Ho aperto la fifo1 in scrittura\n");
 
         printf("<Server> Invio ID della shared memory a Client_0\n");
@@ -251,7 +260,7 @@ int main() {
             int lenOfFIFO2 = strlen(buffer[i].fifo2);
             int lenOfShM = strlen(buffer[i].shMem);
             int lenOfMsgQ = strlen(buffer[i].msgQ);*/
-            char pidToStr[8];
+
             sprintf(pidToStr, "%d", buffer[i].pid);
             //ottengo il pathname completo del file di out (quello con _out) alla fine
             char *newName = strcat(buffer[i].pathname, "_out"); //TODO da convertire in array
@@ -291,13 +300,14 @@ int main() {
             write(fdNewFile, pidToStr, sizeof(pidToStr));
             write(fdNewFile, " tramite ShdMem]\n", strlen(" tramite ShdMem]\n"));
             write(fdNewFile, buffer[i].shMem, strlen(buffer[i].shMem));
+            close(fdNewFile);
         }
 
         //TODO la chiusura delle IPC avviene solo alla ricezione di un SIG_INT
 
         //invio conferma fine lavoro
         rcvFromMsgQ.mtype = 1;
-        int sizeOfResult = sizeof(struct mymsg) - sizeof(long);
+        sizeOfResult = sizeof(struct mymsg) - sizeof(long);
         if(msgsnd(msQId, &rcvFromMsgQ, sizeOfResult, 0) == -1)
             errExit("<Server> Non sono riuscito a inviare la conferma di lavoro concluso\n");
         printf("<Server> Torno in attesa...\n");
@@ -309,6 +319,8 @@ int main() {
         closedIPC[3]=0;
         cursor=0;
         n_files = 0;
+
+
     }
 }
 
