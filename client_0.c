@@ -22,10 +22,20 @@ char files[N_FILES][MAX_PATH]; //array contenente tutti i pathname
 char *fifo1name = "/tmp/myfifo1";
 char *fifo2name ="/tmp/myfifo2";
 int n_files;
+int semForChild;
+int mutex;
+int semCursor;
 
 void sigHandler(int sig) {
     if(sig == SIGUSR1){
         printf("Terminazione del processo Client_0.\n");
+        if(semctl(semForChild,0,IPC_RMID,0) == -1)
+            errExit("Errore cancellazione semForChild");
+        if(semctl(mutex,0,IPC_RMID,0) == -1)
+            errExit("Errore cancellazione mutex");
+        if(semctl(semCursor,0,IPC_RMID,0) == -1)
+            errExit("Errore cancellazione semCursor");
+
         if(kill(getpid(), SIGTERM) == -1){
             errExit("Ops, il Client_0 è sopravvissuto");
         }
@@ -185,7 +195,7 @@ int main(int argc, char * argv[]) {
         printf("<Client_0> Ricevuta conferma ricezione numero file dal server\n");
 
         //creazione del semaforo per partenza sincrona dei figli
-        int semForChild = semget(IPC_PRIVATE, 1, S_IRUSR | S_IWUSR);
+        semForChild = semget(IPC_PRIVATE, 1, S_IRUSR | S_IWUSR);
         if(semForChild == -1)
             errExit("<Client_0> Non sono riuscito a creare il set di semafori\n");
 
@@ -208,7 +218,7 @@ int main(int argc, char * argv[]) {
         printf("<Client_0> Ho inizializzato la shared memory\n");
 
         //mutex per accesso al valore del semaforo per la singola IPC e gestione del cursore della shared memory
-        int mutex = semget(IPC_PRIVATE,5,IPC_CREAT|S_IRUSR|S_IWUSR);
+        mutex = semget(IPC_PRIVATE,5,IPC_CREAT|S_IRUSR|S_IWUSR);
         /* 0 -> mutex per lettura valore semaforo FIFO1
          * 1 -> mutex per lettura valore semaforo FIFO2
          * 2 -> mutex per lettura valore semaforo Shared Memory
@@ -224,7 +234,7 @@ int main(int argc, char * argv[]) {
         printf("<Client_0> Ho generato e settato il semaforo mutex\n");
 
         //creazione semaforo che farà ci aiuterà con il cursore della shared memory
-        int semCursor = semget(IPC_PRIVATE, 1, IPC_CREAT|S_IRUSR|S_IWUSR);
+        semCursor = semget(IPC_PRIVATE, 1, IPC_CREAT|S_IRUSR|S_IWUSR);
         unsigned short cursorValue[1] = {0};
         union semun argCursor;
         argCursor.array = cursorValue;

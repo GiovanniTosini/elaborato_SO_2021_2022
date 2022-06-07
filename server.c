@@ -363,9 +363,6 @@ void fillTheBuffer(struct mymsg rcvFrom, struct myfile buffer[], int n_files, in
 void serverSigHandler(int sig) {
     if(sig == SIGINT){
         printf("<Server> Terminazione del processo Client_0.\n");
-        if(kill(pidClient_0, SIGKILL) == -1){
-            errExit("<Server> Ops, il Client_0 è sopravvissuto\n");
-        }
         close(fdfifo1);
         unlink(fifo1name);
         close(fdfifo2);
