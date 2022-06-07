@@ -9,7 +9,7 @@
 #include <stdio.h>
 
 //scorre i file, verifica che siano validi e li salva in "*files"
-//TODO i file devono essere .txt
+
 int search(char files[100][MAX_PATH], char currdir[], int n_files){
 
     struct dirent *dentry;
@@ -27,7 +27,7 @@ int search(char files[100][MAX_PATH], char currdir[], int n_files){
         if(strcmp(dentry->d_name, ".") == 0 || strcmp(dentry->d_name, "..") == 0){
             continue;
         }
-        //TODO se bisogna ignorare i file con _out alla fine, usare la funzione strstr()
+
         //se è un file ed inizia con 'sendme_' otteniamo il suo path e lo carichiamo in memoria
         if((dentry->d_type == DT_REG) && (strncmp(dentry->d_name, "sendme_", strlen("sendme_")) == 0)){
             char pathname[MAX_PATH] = ""; //pathname attuale

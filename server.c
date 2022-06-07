@@ -63,7 +63,7 @@ int main() {
     shmId = alloc_shared_memory(IPC_PRIVATE, sizeof(struct mymsg) * 50);
     printf("<Server> Ho allocato memoria la shared memory, con id: %d\n", shmId);
 
-    //creo la msg queue TODO cambio da ipc private
+    //creo la msg queue
     msQId = msgget(IPC_PRIVATE, IPC_CREAT | S_IRUSR | S_IWUSR);
     printf("<Server> Ho creato la coda di messaggi, con id: %d\n", msQId);
 
@@ -102,14 +102,16 @@ int main() {
 
     //leggo il numero di file
     int n_files=0;
-    //inizializzazione del cursore per shared memory
+
     //leggi sarà la variabile in cui si salvano i byte letti
-    //array di supporto se una IPC viene chiusa il valore sarà modificato a 1 per evitare che il server la usi e si blocchi
-    //inoltre serve a far capire se son stati ricomposti tutti i messaggi
     int leggi=0;
+    //array di supporto se una IPC viene chiusa il valore sarà modificato a 1 per evitare che il server la usi e si blocchi
+    // inoltre serve a far capire se son stati ricomposti tutti i messaggi
     int closedIPC[]={0, 0, 0, 0};
+    //inizializzazione del cursore per shared memory
     int cursor = 0;
-    int counterForFIFO1,counterForFIFO2,counterShM,counterForMsgQ;
+
+    int counterForFIFO1,counterForFIFO2,counterShM,counterForMsgQ; //per il numero dei files
     int sizeOfMessage;
 
 
@@ -117,12 +119,11 @@ int main() {
 
         n_files = 0;
         //printf("\n\nn_files %d pre ricevimento\n\n", n_files);
-
         read(fdfifo1, &n_files, sizeof(int));
 
 
+
         printf("<Server> Ricevuti %d file con cui lavorare\n", n_files);
-        //printf("\n\nn_files %d\n\n", n_files);
         //contatore per FIFO1, FIFO2, shareM, MsgQ
         counterForFIFO1 = n_files;
         counterForFIFO2 = n_files;
@@ -131,8 +132,8 @@ int main() {
 
         //chiusura momentanea per poi riaprirla in scrittura per inviare ID di shm, msgq e semIdForIPC
         close(fdfifo1);
-        sleep(5); //dovrebbe evitare che server si blocchi in apertura della fifo
-        fdfifo1 = open(fifo1name,O_WRONLY); //TODO metterlo sia in lettura che in scrittura
+        sleep(5); //evita che il server si blocchi in apertura della fifo
+        fdfifo1 = open(fifo1name,O_WRONLY);
         if(fdfifo1 == -1)
             errExit("<Server> Errore open Fifo1\n");
         printf("<Server> Ho aperto la fifo1 in scrittura\n");
@@ -150,8 +151,7 @@ int main() {
         fdfifo1 = open(fifo1name, O_RDONLY);
         printf("<Server> Ho riaperto la fifo1 in sola lettura\n");
 
-        //attach shmemory (il prof lo dichiara void e con dimensione NULL ES.5 N.4)
-        //PROBLEMA: è possibile tenere le flag per read/write, solo read ma non solo write...
+        //attach shmemory
         rcvFromShM=(struct mymsg*) get_shared_memory(shmId, 0);
 
         //invio conferma su shmemory
@@ -172,10 +172,8 @@ int main() {
         //INIZIO RICEZIONE
         printf("<Server> Inizio ricezione dei file\n");
         while(closedIPC[0] == 0 || closedIPC[1] == 0 || closedIPC[2] == 0 || closedIPC[3] == 0){
-            /* da man 7 pipe, se si prova a leggere da una FIFO che non ha più processi
-             * in scrittura la read tornerà 0
-             */
-            //leggo dalla fifo1 TODO se non trova da leggere si blocca
+
+            //leggo dalla fifo1
             if(counterForFIFO1 > 0){
                 leggi = read(fdfifo1, &rcvFromFifo1,sizeof(rcvFromFifo1));
                 if(leggi == -1) {
@@ -189,7 +187,7 @@ int main() {
                 }
             }
 
-            //lettura da FIFO2 TODO se non trova da leggere si blocca
+            //lettura da FIFO2
             if(counterForFIFO2 > 0) {
                 leggi = read(fdfifo2, &rcvFromFifo2, sizeof(rcvFromFifo2));
                 if (leggi == -1) {
@@ -214,16 +212,13 @@ int main() {
                     closedIPC[2] = 1;
                 }
                 else if(rcvFromShM[cursor].mtype == 0){
-                    //printf("<Server> Verifico la shared memory ricevuta dal PID %d, mtype: %ld\nstringa: %s\npathname: %s\n", rcvFromShM[cursor].pid, rcvFromShM[cursor].mtype, rcvFromShM[cursor].portion, rcvFromShM[cursor].pathname);
+
                     fillTheBuffer(rcvFromShM[cursor], buffer, n_files, 4);
-                    //printf("<Server> Ho salvato il messaggio della shared memory del processo %d\n",rcvFromShM->pid);
                     rcvFromShM[cursor].mtype = 1;
-                    //printf("<Server> Ho impostato mtype: %ld cursor ha valore: %d\n", rcvFromShM->mtype, cursor);
                     cursor++;
                     if(cursor == 50){
                         cursor = 0;
                     }
-                    //printf("<Server> Cursor: %d dopo l'incremento\n", cursor);
                     counterShM--;
                     semOp(semIdForIPC, 2, 1);
                 }
@@ -239,7 +234,6 @@ int main() {
                 }
                 else {
                     fillTheBuffer(rcvFromMsgQ, buffer, n_files, 3);
-                    //printf("<Server> Ho salvato il messaggio della msgQ del processo %d\n",rcvFromMsgQ.pid);
                     counterForMsgQ--;
                     if(counterForMsgQ == 0)
                         closedIPC[3] = 1;
@@ -255,55 +249,50 @@ int main() {
         printf("<Server> Sto per ricostruire e scrivere su file i messaggi\n");
         //Ricostruzione messaggi
         for(int i = 0; i < n_files; i++){
-            //preparo le lunghezze delle 4 parti per le future write e il cast a str del pid
-            /*int lenOfFIFO1 = strlen(buffer[i].fifo1);
-            int lenOfFIFO2 = strlen(buffer[i].fifo2);
-            int lenOfShM = strlen(buffer[i].shMem);
-            int lenOfMsgQ = strlen(buffer[i].msgQ);*/
-
             sprintf(pidToStr, "%d", buffer[i].pid);
             //ottengo il pathname completo del file di out (quello con _out) alla fine
-            char *newName = strcat(buffer[i].pathname, "_out"); //TODO da convertire in array
+            char pathname[MAX_PATH] = "";
+            strcpy(pathname,buffer[i].pathname);
+
+            char *newName = strcat(buffer[i].pathname, "_out");
             int fdNewFile = open(newName, O_WRONLY | O_APPEND | O_CREAT, S_IWUSR | S_IRUSR);
             if(fdNewFile == -1)
                 errExit("<Server> Non sono riuscito a creare un nuovo file\n");
-            //con O_APPEND ad ogni write verrà tutto messo in fondo, nessuna sovrascrittura
-            //ssize_t resultWrite; //lo userò per ogni write e per verificare che sia andata a buon fine
-            //TODO valutare se mettere i controlli dell'avvenuta write o meno
-            char *newNewName = strcat(newName, ":\n");
+
+            char *newNewName = strcat(newName, ",\n");
             write(fdNewFile, newNewName, strlen(newNewName));
-            //PARTE 1 TODO sistemare le stampe: riga 269,...
+            //PARTE 1
             write(fdNewFile, "[Parte 1, del file ", strlen("[Parte 1, del file "));
-            write(fdNewFile, buffer[i].pathname, strlen(buffer[i].pathname));
-            write(fdNewFile, ", spedita dal processo ", strlen(", spedita dal processo "));
+            write(fdNewFile, pathname, strlen(pathname));
+            write(fdNewFile, ", spedita dal processo", strlen(", spedita dal processo "));
             write(fdNewFile, pidToStr, sizeof(pidToStr));
             write(fdNewFile, " tramite FIFO1]\n", strlen(" tramite FIFO1]\n"));
             write(fdNewFile, buffer[i].fifo1, strlen(buffer[i].fifo1));
+
             //PARTE 2
             write(fdNewFile, "\n\n[Parte 2, del file ", strlen("\n\n[Parte 2, del file "));
-            write(fdNewFile, buffer[i].pathname, strlen(buffer[i].pathname));
+            write(fdNewFile, pathname, strlen(pathname));
             write(fdNewFile, ", spedita dal processo ", strlen(", spedita dal processo "));
             write(fdNewFile, pidToStr, sizeof(pidToStr));
             write(fdNewFile, " tramite FIFO2]\n", strlen(" tramite FIFO2]\n"));
             write(fdNewFile, buffer[i].fifo2, strlen(buffer[i].fifo2));
-            //PARTE 3 //TODO msgQ va per terza magari meglio ordinare visivamente l'invio e la ricezione
+            //PARTE 3
             write(fdNewFile, "\n\n[Parte 3, del file ", strlen("\n\n[Parte 3, del file "));
-            write(fdNewFile, buffer[i].pathname, strlen(buffer[i].pathname));
+            write(fdNewFile, pathname, strlen(pathname));
             write(fdNewFile, ", spedita dal processo ", strlen(", spedita dal processo "));
             write(fdNewFile, pidToStr, sizeof(pidToStr));
             write(fdNewFile, " tramite MsgQueue]\n", strlen(" tramite MsgQueue]\n"));
             write(fdNewFile, buffer[i].msgQ, strlen(buffer[i].msgQ));
             //PARTE 4
             write(fdNewFile, "\n\n[Parte 4, del file ", strlen("\n\n[Parte 4, del file "));
-            write(fdNewFile, buffer[i].pathname, strlen(buffer[i].pathname));
+            write(fdNewFile, pathname, strlen(pathname));
             write(fdNewFile, ", spedita dal processo ", strlen(", spedita dal processo "));
             write(fdNewFile, pidToStr, sizeof(pidToStr));
             write(fdNewFile, " tramite ShdMem]\n", strlen(" tramite ShdMem]\n"));
             write(fdNewFile, buffer[i].shMem, strlen(buffer[i].shMem));
+
             close(fdNewFile);
         }
-
-        //TODO la chiusura delle IPC avviene solo alla ricezione di un SIG_INT
 
         //invio conferma fine lavoro
         rcvFromMsgQ.mtype = 1;

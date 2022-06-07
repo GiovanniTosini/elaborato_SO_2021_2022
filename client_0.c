@@ -6,7 +6,6 @@
 #include <unistd.h>
 #include <signal.h>
 #include <sys/types.h>
-#include <dirent.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <fcntl.h>
@@ -35,13 +34,7 @@ void sigHandler(int sig) {
         printf("Avvio di Client_0...\n");
     }
 }
-/*
-size_t append2Path(char *directory){
-    size_t lastPathEnd = strlen(currdir);
-    strcat(strcat(&currdir[lastPathEnd],"/"),directory);
-    return lastPathEnd;
-}
-*/
+
 int main(int argc, char * argv[]) {
 
     //controllo gli argomenti passati
@@ -54,12 +47,6 @@ int main(int argc, char * argv[]) {
     sigset_t signalSet;
     
     //rimozione di tutti i segnali
-
-    //variante
-    /*if(sigfillset(&signalSet) || sigdelset(&signalSet, SIGINT | SIGUSR1) ||
-            sigprocmask(SIG_SETMASK, &signalSet, NULL) == -1){
-        errExit("Something wrong I can smell it");
-    }*/
 
     //riempio la signalSet con tutti i segnali
     if(sigfillset(&signalSet) == -1){
@@ -85,23 +72,23 @@ int main(int argc, char * argv[]) {
     }
     //in attesa dei segnali desiderati
 
+    //aperture FIFO + invio PID Client_0
+    int fdFIFO1 = open(fifo1name, O_WRONLY);
+    if(fdFIFO1 == -1)
+        errExit("<Client_0> Errore con apertura fifo1\n");
+    int fdFIFO2 = open(fifo2name,O_WRONLY);
+    if(fdFIFO2 == -1)
+        errExit("<Client_0> Errore con apertura fifo2\n");
+    printf("<Client_0> Ho aperto FIFO1 e FIFO2\n");
+    pid_t pidclient = getpid();
+    write(fdFIFO1, &pidclient, sizeof(pid_t));
+    printf("<Client_0> Invio il mio PID: %d\n", pidclient);
+
     while(1){
+
         printf("<Client_0> In attesa di CTRL+C...\n");
         n_files = 0; //reset di files
         pause();
-
-        //aperture FIFO + invio PID Client_0
-        int fdFIFO1 = open(fifo1name, O_WRONLY);
-        if(fdFIFO1 == -1)
-            errExit("<Client_0> Errore con apertura fifo1\n");
-        int fdFIFO2 = open(fifo2name,O_WRONLY);
-        if(fdFIFO2 == -1)
-            errExit("<Client_0> Errore con apertura fifo2\n");
-        printf("<Client_0> Ho aperto FIFO1 e FIFO2\n");
-        pid_t pidclient = getpid();
-        write(fdFIFO1, &pidclient, sizeof(pid_t));
-        printf("<Client_0> Invio il mio PID: %d\n", pidclient);
-
         //settaggio maschera
         if(sigaddset(&signalSet, SIGINT) == -1){
             errExit("<Client_0> Non sono riuscito a riaggiungere i segnali al set\n");
@@ -130,7 +117,7 @@ int main(int argc, char * argv[]) {
         n_files = 0;
         n_files = search(files, argv[1], 0);
         if(n_files == 0){
-            printf("<Server> Ho trovato 0 files, chiudo");
+            printf("<Client_0> Ho trovato 0 files, chiudo\n");
             exit(1);
         }
 
@@ -145,20 +132,24 @@ int main(int argc, char * argv[]) {
             errExit("<Client_0> Errore scrittura fifo1");
 
         //chiusura momentanea per ricezione ID IPC TODO controllo close, open,...
-        close(fdFIFO1);
+        if(close(fdFIFO1)==-1)
+            errExit("<Client_0> Errore chiusura fifo1");
         printf("<Client_0> Ho chiuso la fifo1 in scrittura\n");
         fdFIFO1 = open(fifo1name,O_RDONLY);
+        if(fdFIFO1==-1)
+            errExit("<Client_0> Errore apertura fifo1");
         printf("<Client_0> Ho aperto la fifo1 in lettura\n");
 
         int shmId;
         printf("<Client_0> Sto per ricevere l'ID della shared memory\n");
-        read(fdFIFO1, &shmId, sizeof(shmId));
+        if(read(fdFIFO1, &shmId, sizeof(shmId))==-1)
+            errExit("<Client_0> Errore lettura idShm fifo1");
 
         //stessa roba con msgQ
         int msgQId; //sarebbe la msgQ
         printf("<Client_0> Sto per ricevere l'ID della message queue\n");
         if(read(fdFIFO1, &msgQId, sizeof(int)) == -1)
-            errExit("<Client_0> Errore lettura fifo1");
+            errExit("<Client_0> Errore lettura idMsgQ fifo1");
 
         //lettura ID dei semafori generati dal server
         int semIdForIPC;
@@ -293,7 +284,6 @@ int main(int argc, char * argv[]) {
                 semOp(semForChild, (unsigned short)0, 0); //Rimane fermo fin quando tutti non sono 0.
                 //iniziano inviare
                 do{
-                    //INIZIO INVIO
 
                     //scrittura in FIFO1
                     if(checkinvio[0] == 0){
@@ -303,7 +293,7 @@ int main(int argc, char * argv[]) {
                             errExit("<Client_0> Non sono riuscito a recuperare il valore del semaforo della FIFO1\n");
                         else if(semFIFO1value > 0){
                             semOp(semIdForIPC,(unsigned short)0,-1);//mi prenoto il posto nell'IPC
-                            semOp(mutex,(unsigned short)0,1); //lascio accedere alla mutex al prossimo client
+                            semOp(mutex,(unsigned short)0,1); //lascio accedere alla mutex il prossimo client
                             if(write(fdFIFO1, &sendByFIFO1, sizeof(sendByFIFO1)) == -1){
                                 errExit("<Client_0> Non sono riuscito a scrivere nella FIFO1\n");
                             }
@@ -339,14 +329,14 @@ int main(int argc, char * argv[]) {
 
                     //scrittura in Shared Memory
                     if(checkinvio[2] == 0) {
-                        semOp(mutex, (unsigned short)2, -1);
+                        semOp(mutex, (unsigned short)2, -1); //per il valore di semidforipc
                         int semShMvalue = semctl(semIdForIPC, 2, GETVAL, 0);
                         if (semShMvalue == -1)
                             errExit("<Client> Non sono riuscito a recuperare il valore del semaforo della shared memory\n");
                         else if (semShMvalue > 0) {
                             semOp(semIdForIPC, (unsigned short)2, -1);
                             semOp(mutex, (unsigned short)2, 1);
-                            semOp(mutex, (unsigned short)4, -1);
+                            semOp(mutex, (unsigned short)4, -1);//per accedere al cursore
 
                             /* Usiamo un semaforo per la gestione del cursore per scrivere sulla shared memory
                              * ogni client che riuscirà a entrare per scrivere sulla shared memory andrà
@@ -364,18 +354,14 @@ int main(int argc, char * argv[]) {
                                     errExit("<Client> Non sono riuscito a resettare il valore del semaforo per il cursore\n");
                                 cursor = 0;
                             }
-                            //printf("<Client_%d> Il valore del cursore che andrò a usare è: %d\n", pid, cursor);
-                            //printf("<Client_%d> pid: %d\npathname: %s\nstringa: %s\n", pid, pid, dummyShM.pathname, dummyShM.portion);
 
-                            //dummyShM.mtype = 0;
-                            //memcpy(&sendByShMemory[cursor].mtype, &dummyShM.mtype, sizeof(long));
                             memcpy(&sendByShMemory[cursor].pid,&dummyShM.pid, sizeof(int));
-                            //sendByShMemory[cursor].pid = dummyShM.pid;//copio il pid di dummy nella shared memory
+
                             strcpy(sendByShMemory[cursor].pathname, dummyShM.pathname);
                             strcpy(sendByShMemory[cursor].portion, dummyShM.portion);
                             sendByShMemory[cursor].mtype = 0;
-                            //semOp per incrementare il valore del semaforo per il cursor
-                            semOp(semCursor, (unsigned short)0, 1);
+
+                            semOp(semCursor, (unsigned short)0, 1); //semaforo per gestire il cursore
                             semOp(mutex, (unsigned short)4, 1);
                             printf("<Client_%d> Ho fatto l'invio in shared memory\n",pid);
                             checkinvio[2] = 1;
@@ -410,12 +396,9 @@ int main(int argc, char * argv[]) {
 
                 close(fd);
                 kill(pid,SIGKILL);
-                //exit(child);
             }
         }
-        /*Client_0 si mette in attesa di conferma fine lavoro da
-                 * server la conferma sarà un 1 in mtype
-                 */
+        //Client_0 si mette in attesa di conferma fine lavoro dal server, la conferma sarà un 1 in mtype
         struct mymsg result;
         int flag = 1, sizeOfResult = sizeof(result) - sizeof(long);
         while(flag){
